@@ -1,0 +1,16 @@
+{
+  "host": "127.0.0.1",
+  "port": 6742,
+  "brush": "ring",
+  "color": "rainbow",
+  "solid": "#2EE6D6",
+  "idle": "#06080A",
+  "speed": 14,
+  "thickness": 1.15,
+  "lifetime": 1.15,
+  "fade": 1.35,
+  "echoes": 1,
+  "echo_delay": 0.12,
+  "brightness": 1.0,
+  "impact": true
+}

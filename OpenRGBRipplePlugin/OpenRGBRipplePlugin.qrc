@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/">
+        <file>OpenRGBRipplePlugin.png</file>
+    </qresource>
+</RCC>
