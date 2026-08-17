@@ -39,11 +39,13 @@ If the script built the DLL but did not copy it:
 
 | Control | What it does |
 | --- | --- |
-| Enable | Arm the effect |
+| Enabled | Arm the effect |
 | Brush | Ring / Fill / Soft |
-| Color | Rainbow / Solid / Random + pick |
-| Idle | Background colour (wave paints **over** it) |
-| Blend | Over (default) or Add |
+| Color | Rainbow / Solid / Random |
+| Wave | Solid wave colour (click the swatch) |
+| Background | Colour of keys the wave is not on |
+| Blend | Over (replace background) or Add (stack glow) |
+| Disable background | Leave unused keys alone for another effect |
 | Speed, thickness, lifetime, fade, echoes, brightness | Same as the SDK client |
 | Keyboards | Which devices to paint |
 | Tray | Enable / Disable |

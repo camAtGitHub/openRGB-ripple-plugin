@@ -14,7 +14,6 @@
 #include <QComboBox>
 #include <QGridLayout>
 #include <QGroupBox>
-#include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
 #include <QSlider>
@@ -59,6 +58,7 @@ RippleWidget::RippleWidget(ResourceManagerInterface* rm, QWidget* parent)
     BuildUi();
     LoadSettings();
     RebuildDevices();
+    PushDirectMode();
     hook_->Start();
 
     timer_ = new QTimer(this);
@@ -69,13 +69,60 @@ RippleWidget::RippleWidget(ResourceManagerInterface* rm, QWidget* parent)
 
 RippleWidget::~RippleWidget()
 {
+    Shutdown();
     if(hook_)
     {
-        hook_->Stop();
         delete hook_;
         hook_ = nullptr;
     }
     SaveSettings();
+}
+
+void RippleWidget::InvalidateDevices()
+{
+    std::lock_guard<std::mutex> lock(device_mutex_);
+    devices_live_ = false;
+    mapped_.clear();
+    for(DeviceOpt& d : devices_)
+    {
+        d.controller = nullptr;
+    }
+}
+
+void RippleWidget::SuspendForDetection()
+{
+    if(timer_)
+    {
+        timer_->stop();
+    }
+    InvalidateDevices();
+    if(status_)
+    {
+        status_->setText("Paused while OpenRGB rescans devices…");
+    }
+}
+
+void RippleWidget::ResumeAfterDetection()
+{
+    RebuildDevices();
+    PushDirectMode();
+    if(timer_)
+    {
+        timer_->start();
+    }
+}
+
+void RippleWidget::Shutdown()
+{
+    if(timer_)
+    {
+        timer_->stop();
+    }
+    if(hook_)
+    {
+        hook_->Stop();
+    }
+    InvalidateDevices();
 }
 
 void RippleWidget::BuildUi()
@@ -84,71 +131,87 @@ void RippleWidget::BuildUi()
     root->setContentsMargins(16, 16, 16, 16);
     root->setSpacing(12);
 
-    auto* title = new QLabel("Ripple");
+    auto* title = new QLabel("Ripple 1.0.1");
     QFont f = title->font();
     f.setPointSize(16);
     f.setBold(true);
     title->setFont(f);
     root->addWidget(title);
 
-    auto* blurb = new QLabel(
-        "Artemis-style key press wave. A ring expands from the LED that matches "
-        "the physical key you press.");
+    auto* blurb = new QLabel("A wave expands from each key you press.");
     blurb->setWordWrap(true);
     root->addWidget(blurb);
 
-    enable_box_ = new QCheckBox("Enable effect");
+    enable_box_ = new QCheckBox("Enabled");
     enable_box_->setChecked(true);
     connect(enable_box_, &QCheckBox::toggled, this, &RippleWidget::SetEnabled);
     root->addWidget(enable_box_);
 
-    auto* brush_row = new QHBoxLayout();
-    brush_row->addWidget(new QLabel("Brush"));
+    auto* grid = new QGridLayout();
+    grid->setHorizontalSpacing(10);
+    grid->setVerticalSpacing(8);
+    int row = 0;
+
+    auto add_label = [&](const char* name) -> QLabel*
+    {
+        auto* l = new QLabel(name);
+        l->setMinimumWidth(80);
+        grid->addWidget(l, row, 0);
+        return l;
+    };
+
+    add_label("Brush");
     brush_box_ = new QComboBox();
-    brush_box_->addItems({"Ring (Key Wave)", "Fill (Key Wave Filled)", "Soft (glow)"});
+    brush_box_->addItems({"Ring", "Fill", "Soft"});
     connect(brush_box_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &RippleWidget::OnUiChanged);
-    brush_row->addWidget(brush_box_, 1);
-    root->addLayout(brush_row);
+    grid->addWidget(brush_box_, row, 1, 1, 2);
+    row++;
 
-    auto* color_row = new QHBoxLayout();
-    color_row->addWidget(new QLabel("Color"));
+    add_label("Color");
     color_box_ = new QComboBox();
     color_box_->addItems({"Rainbow", "Solid", "Random"});
     color_box_->setCurrentIndex(0);
     connect(color_box_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &RippleWidget::OnUiChanged);
-    color_row->addWidget(color_box_, 1);
-    auto* pick = new QPushButton("Pick");
-    connect(pick, &QPushButton::clicked, this, &RippleWidget::OnPickColor);
-    color_row->addWidget(pick);
-    color_swatch_ = new QLabel("    ");
-    color_swatch_->setAutoFillBackground(true);
-    color_row->addWidget(color_swatch_);
-    root->addLayout(color_row);
+    grid->addWidget(color_box_, row, 1, 1, 2);
+    row++;
 
-    auto* idle_row = new QHBoxLayout();
-    idle_row->addWidget(new QLabel("Idle"));
-    auto* idle_pick = new QPushButton("Background");
-    connect(idle_pick, &QPushButton::clicked, this, &RippleWidget::OnPickIdle);
-    idle_row->addWidget(idle_pick);
-    idle_swatch_ = new QLabel("    ");
-    idle_swatch_->setAutoFillBackground(true);
-    idle_row->addWidget(idle_swatch_);
-    idle_row->addWidget(new QLabel("Blend"));
+    QLabel* wave_lbl = add_label("Wave");
+    color_btn_ = new QPushButton();
+    color_btn_->setCursor(Qt::PointingHandCursor);
+    color_btn_->setAutoDefault(false);
+    color_btn_->setAccessibleName("Wave color");
+    color_btn_->setToolTip("Color of the wave when Color is Solid. Click to change.");
+    connect(color_btn_, &QPushButton::clicked, this, &RippleWidget::OnPickColor);
+    wave_lbl->setBuddy(color_btn_);
+    grid->addWidget(color_btn_, row, 1, 1, 2);
+    row++;
+
+    QLabel* idle_lbl = add_label("Background");
+    idle_btn_ = new QPushButton();
+    idle_btn_->setCursor(Qt::PointingHandCursor);
+    idle_btn_->setAutoDefault(false);
+    idle_btn_->setAccessibleName("Background color");
+    idle_btn_->setToolTip("Color of keys the wave is not on. Click to change.");
+    connect(idle_btn_, &QPushButton::clicked, this, &RippleWidget::OnPickIdle);
+    idle_lbl->setBuddy(idle_btn_);
+    grid->addWidget(idle_btn_, row, 1, 1, 2);
+    row++;
+
+    add_label("Blend");
     blend_box_ = new QComboBox();
-    blend_box_->addItems({"Over (ripple on top)", "Add (glow)"});
+    blend_box_->addItems({"Over", "Add"});
+    blend_box_->setToolTip("Over replaces the background color. Add stacks the wave on top.");
     connect(blend_box_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &RippleWidget::OnUiChanged);
-    idle_row->addWidget(blend_box_, 1);
-    root->addLayout(idle_row);
+    grid->addWidget(blend_box_, row, 1, 1, 2);
+    row++;
 
-    auto* grid = new QGridLayout();
-    int row = 0;
     auto add_slider = [&](const char* name, QSlider*& slot, QLabel*& value,
                           int min, int max, int val)
     {
-        grid->addWidget(new QLabel(name), row, 0);
+        add_label(name);
         slot = MakeSlider(min, max, val);
         connect(slot, &QSlider::valueChanged, this, &RippleWidget::OnUiChanged);
         grid->addWidget(slot, row, 1);
@@ -166,17 +229,19 @@ void RippleWidget::BuildUi()
     add_slider("Brightness", brightness_, brightness_val_, 15, 100, 100);
     root->addLayout(grid);
     UpdateSliderLabels();
+    SetColorButton(color_btn_, engine_.GetSettings().solid);
+    SetColorButton(idle_btn_, engine_.GetSettings().idle);
 
-    impact_box_ = new QCheckBox("Impact flash on the pressed key");
+    impact_box_ = new QCheckBox("Flash pressed key");
     impact_box_->setChecked(true);
     connect(impact_box_, &QCheckBox::toggled, this, &RippleWidget::OnUiChanged);
     root->addWidget(impact_box_);
 
-    idle_box_ = new QCheckBox("Paint idle background");
-    idle_box_->setChecked(true);
+    idle_box_ = new QCheckBox("Disable background");
+    idle_box_->setChecked(false);
     idle_box_->setToolTip(
-        "Off: leave keys the ripple is not touching alone, so an Effects "
-        "plugin shader / pattern can show through.");
+        "Leave keys the wave is not touching alone, so another "
+        "effect can show through.");
     connect(idle_box_, &QCheckBox::toggled, this, &RippleWidget::OnUiChanged);
     root->addWidget(idle_box_);
 
@@ -214,7 +279,7 @@ void RippleWidget::OnPickColor()
     QColor start(static_cast<int>(s.solid.r),
                  static_cast<int>(s.solid.g),
                  static_cast<int>(s.solid.b));
-    QColor c = QColorDialog::getColor(start, this, "Ripple color");
+    QColor c = QColorDialog::getColor(start, this, "Wave color");
     if(!c.isValid())
     {
         return;
@@ -227,9 +292,7 @@ void RippleWidget::OnPickColor()
     suppress_ui_ = true;
     color_box_->setCurrentIndex(1);
     suppress_ui_ = false;
-    QPalette p = color_swatch_->palette();
-    p.setColor(QPalette::Window, c);
-    color_swatch_->setPalette(p);
+    SetColorButton(color_btn_, s.solid);
     SaveSettings();
 }
 
@@ -244,13 +307,30 @@ void RippleWidget::UpdateSliderLabels()
     brightness_val_->setText(QString::number(brightness_->value()) + "%");
 }
 
+void RippleWidget::SetColorButton(QPushButton* btn, const RippleRGB& c)
+{
+    if(!btn)
+    {
+        return;
+    }
+    const QColor qc(static_cast<int>(c.r),
+                    static_cast<int>(c.g),
+                    static_cast<int>(c.b));
+    const QString fg = qc.lightness() > 140 ? QString("#1a1a1a") : QString("#f2f2f2");
+    btn->setText(qc.name().toUpper());
+    btn->setStyleSheet(
+        QString("QPushButton { background-color: %1; color: %2; }")
+            .arg(qc.name(), fg));
+    btn->setToolTip(qc.name().toUpper() + " — click to change");
+}
+
 void RippleWidget::OnPickIdle()
 {
     RippleSettings s = engine_.GetSettings();
     QColor start(static_cast<int>(s.idle.r),
                  static_cast<int>(s.idle.g),
                  static_cast<int>(s.idle.b));
-    QColor c = QColorDialog::getColor(start, this, "Idle / background color");
+    QColor c = QColorDialog::getColor(start, this, "Background color");
     if(!c.isValid())
     {
         return;
@@ -259,9 +339,7 @@ void RippleWidget::OnPickIdle()
               static_cast<float>(c.green()),
               static_cast<float>(c.blue())};
     engine_.SetSettings(s);
-    QPalette p = idle_swatch_->palette();
-    p.setColor(QPalette::Window, c);
-    idle_swatch_->setPalette(p);
+    SetColorButton(idle_btn_, s.idle);
     SaveSettings();
 }
 
@@ -285,7 +363,7 @@ void RippleWidget::OnUiChanged()
     s.brightness = brightness_->value() / 100.0f;
     s.impact_flash = impact_box_->isChecked();
     s.blend      = blend_box_->currentIndex() == 1 ? RippleBlend::Add : RippleBlend::Max;
-    s.paint_idle = !idle_box_ || idle_box_->isChecked();
+    s.paint_idle = !idle_box_ || !idle_box_->isChecked();
     s.enabled    = enable_box_->isChecked();
     engine_.SetSettings(s);
     SaveSettings();
@@ -307,25 +385,14 @@ void RippleWidget::SyncUiFromSettings(const RippleSettings& s)
     impact_box_->setChecked(s.impact_flash);
     if(idle_box_)
     {
-        idle_box_->setChecked(s.paint_idle);
+        idle_box_->setChecked(!s.paint_idle);
     }
     if(blend_box_)
     {
         blend_box_->setCurrentIndex(s.blend == RippleBlend::Add ? 1 : 0);
     }
-    QPalette p = color_swatch_->palette();
-    p.setColor(QPalette::Window, QColor(static_cast<int>(s.solid.r),
-                                        static_cast<int>(s.solid.g),
-                                        static_cast<int>(s.solid.b)));
-    color_swatch_->setPalette(p);
-    if(idle_swatch_)
-    {
-        QPalette ip = idle_swatch_->palette();
-        ip.setColor(QPalette::Window, QColor(static_cast<int>(s.idle.r),
-                                             static_cast<int>(s.idle.g),
-                                             static_cast<int>(s.idle.b)));
-        idle_swatch_->setPalette(ip);
-    }
+    SetColorButton(color_btn_, s.solid);
+    SetColorButton(idle_btn_, s.idle);
     UpdateSliderLabels();
     suppress_ui_ = false;
 }
@@ -404,12 +471,34 @@ void RippleWidget::EnsureDirectMode(RGBController* controller)
     {
         return;
     }
+    /* SetCustomMode only picks the Direct/Custom mode index.
+       Do not call UpdateMode() here — that queues a USB write on the
+       controller's worker thread and races with Rescan's destructor. */
     controller->SetCustomMode();
-    controller->UpdateMode();
+}
+
+void RippleWidget::PushDirectMode()
+{
+    std::lock_guard<std::mutex> lock(device_mutex_);
+    if(!devices_live_)
+    {
+        return;
+    }
+    for(const DeviceOpt& d : devices_)
+    {
+        if(d.controller)
+        {
+            d.controller->UpdateMode();
+        }
+    }
 }
 
 bool RippleWidget::DeviceSelected(RGBController* controller) const
 {
+    if(!controller)
+    {
+        return false;
+    }
     bool any = false;
     for(const DeviceOpt& d : devices_)
     {
@@ -427,20 +516,37 @@ bool RippleWidget::DeviceSelected(RGBController* controller) const
 
 void RippleWidget::RebuildDevices()
 {
-    if(!rm_)
+    if(!rm_ || !device_list_)
     {
         return;
     }
 
+    const bool ready = rm_->GetDetectionPercent() >= 100;
+
     QLayout* list = device_list_->layout();
-    QLayoutItem* child;
-    while((child = list->takeAt(0)) != nullptr)
+    if(list)
     {
-        delete child->widget();
-        delete child;
+        QLayoutItem* child;
+        while((child = list->takeAt(0)) != nullptr)
+        {
+            delete child->widget();
+            delete child;
+        }
     }
+
+    std::lock_guard<std::mutex> lock(device_mutex_);
     devices_.clear();
     mapped_.clear();
+    devices_live_ = false;
+
+    if(!ready)
+    {
+        if(status_)
+        {
+            status_->setText("Waiting for device detection…");
+        }
+        return;
+    }
 
     std::vector<RGBController*>& controllers = rm_->GetRGBControllers();
     for(RGBController* controller : controllers)
@@ -504,10 +610,14 @@ void RippleWidget::RebuildDevices()
         }
     }
 
-    status_->setText(QString("Mapped %1 LEDs on %2 keyboard(s). Hook %3.")
-                         .arg(mapped_.size())
-                         .arg(devices_.size())
-                         .arg(hook_ && hook_->IsRunning() ? "active" : "unavailable"));
+    devices_live_ = true;
+    if(status_)
+    {
+        status_->setText(QString("Mapped %1 LEDs on %2 keyboard(s). Hook %3.")
+                             .arg(mapped_.size())
+                             .arg(devices_.size())
+                             .arg(hook_ && hook_->IsRunning() ? "active" : "unavailable"));
+    }
 }
 
 void RippleWidget::ConsumeKeys()
@@ -517,7 +627,8 @@ void RippleWidget::ConsumeKeys()
         return;
     }
     const std::vector<KeyEvent> events = hook_->Drain();
-    if(events.empty() || mapped_.empty())
+    std::lock_guard<std::mutex> lock(device_mutex_);
+    if(!devices_live_ || events.empty() || mapped_.empty())
     {
         return;
     }
@@ -535,7 +646,7 @@ void RippleWidget::ConsumeKeys()
         bool spawned = false;
         for(const MappedLed& led : mapped_)
         {
-            if(!DeviceSelected(led.controller))
+            if(!led.controller || !DeviceSelected(led.controller))
             {
                 continue;
             }
@@ -556,7 +667,7 @@ void RippleWidget::ConsumeKeys()
             /* Fallback: spawn from the first selected keyboard origin. */
             for(const MappedLed& led : mapped_)
             {
-                if(DeviceSelected(led.controller))
+                if(led.controller && DeviceSelected(led.controller))
                 {
                     engine_.Spawn(led.x, led.y, now, seed_++);
                     break;
@@ -592,6 +703,12 @@ void RippleWidget::Paint()
         return;
     }
 
+    std::lock_guard<std::mutex> lock(device_mutex_);
+    if(!devices_live_)
+    {
+        return;
+    }
+
     std::unordered_set<RGBController*> dirty;
     if(s.paint_idle)
     {
@@ -612,7 +729,7 @@ void RippleWidget::Paint()
 
     for(const MappedLed& led : mapped_)
     {
-        if(!DeviceSelected(led.controller))
+        if(!led.controller || !DeviceSelected(led.controller))
         {
             continue;
         }
@@ -635,13 +752,29 @@ void RippleWidget::Paint()
 
 void RippleWidget::OnTick()
 {
+    if(!devices_live_.load())
+    {
+        return;
+    }
     ConsumeKeys();
     Paint();
-    if(status_ && hook_)
+    if(!status_ || !hook_)
     {
-        status_->setText(QString("Mapped %1 LEDs · %2 waves · hook %3")
-                             .arg(mapped_.size())
-                             .arg(engine_.ActiveCount())
-                             .arg(hook_->IsRunning() ? "active" : "off"));
+        return;
     }
+    size_t mapped = 0;
+    bool live = false;
+    {
+        std::lock_guard<std::mutex> lock(device_mutex_);
+        live = devices_live_;
+        mapped = mapped_.size();
+    }
+    if(!live)
+    {
+        return;
+    }
+    status_->setText(QString("Mapped %1 LEDs · %2 waves · hook %3")
+                         .arg(mapped)
+                         .arg(engine_.ActiveCount())
+                         .arg(hook_->IsRunning() ? "active" : "off"));
 }

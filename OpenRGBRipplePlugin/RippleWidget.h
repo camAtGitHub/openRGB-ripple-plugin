@@ -5,12 +5,15 @@
 #pragma once
 
 #include <QWidget>
+#include <atomic>
+#include <mutex>
 #include <vector>
 #include "RippleEngine.h"
 
 class QCheckBox;
 class QComboBox;
 class QLabel;
+class QPushButton;
 class QSlider;
 class ResourceManagerInterface;
 class RGBController;
@@ -27,9 +30,14 @@ public:
     void ApplySettings(const RippleSettings& s);
     RippleSettings CurrentSettings() const { return engine_.GetSettings(); }
 
+    /* Detection-thread safe: drop RGBController* before OpenRGB frees them. */
+    void InvalidateDevices();
+    void Shutdown();
+
 public slots:
     void SetEnabled(bool on);
-    void RebuildDevicesSlot() { RebuildDevices(); }
+    void SuspendForDetection();
+    void ResumeAfterDetection();
 
 private slots:
     void OnUiChanged();
@@ -59,7 +67,9 @@ private:
     void ConsumeKeys();
     void Paint();
     void UpdateSliderLabels();
+    void SetColorButton(QPushButton* btn, const RippleRGB& c);
     void EnsureDirectMode(RGBController* controller);
+    void PushDirectMode();
     bool DeviceSelected(RGBController* controller) const;
 
     ResourceManagerInterface* rm_ = nullptr;
@@ -85,8 +95,8 @@ private:
     QCheckBox*  impact_box_   = nullptr;
     QCheckBox*  idle_box_     = nullptr;
     QLabel*     status_       = nullptr;
-    QLabel*     color_swatch_ = nullptr;
-    QLabel*     idle_swatch_  = nullptr;
+    QPushButton* color_btn_   = nullptr;
+    QPushButton* idle_btn_    = nullptr;
     QWidget*    device_list_  = nullptr;
 
     std::vector<DeviceOpt> devices_;
@@ -94,4 +104,6 @@ private:
     uint32_t               seed_ = 1;
     bool                   suppress_ui_ = false;
     class QTimer*          timer_ = nullptr;
+    mutable std::mutex     device_mutex_;
+    std::atomic<bool>      devices_live_{false};
 };

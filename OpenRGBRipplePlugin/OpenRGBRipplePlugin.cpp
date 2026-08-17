@@ -8,14 +8,17 @@
 
 #include <QAction>
 #include <QMenu>
+#include <QThread>
+#include <chrono>
 #include <cstdio>
+#include <thread>
 
 OpenRGBPluginInfo OpenRGBRipplePlugin::GetPluginInfo()
 {
     OpenRGBPluginInfo info;
     info.Name        = "OpenRGB Ripple Plugin";
     info.Description = "Artemis-style key-press ripple for RGB keyboards";
-    info.Version     = "1.0.0";
+    info.Version     = "1.0.1";
     info.Commit      = "release";
     info.URL         = "https://openrgb.org";
     info.Label       = "Ripple";
@@ -35,12 +38,44 @@ void OpenRGBRipplePlugin::Load(ResourceManagerInterface* resource_manager_ptr)
     printf("[OpenRGBRipplePlugin] Loaded (Plugin API %u)\n", OPENRGB_PLUGIN_API_VERSION);
 }
 
+void OpenRGBRipplePlugin::DetectionStartCallback(void* arg)
+{
+    /* OpenRGB is about to delete every RGBController. UpdateLEDs() only
+       sets a flag; the real USB write runs on that controller's worker
+       thread. Stop our timer on the GUI thread, then wait long enough
+       for those workers to finish before Cleanup() runs. */
+    RippleWidget* ui = static_cast<RippleWidget*>(arg);
+    if(!ui)
+    {
+        return;
+    }
+    if(QThread::currentThread() == ui->thread())
+    {
+        ui->SuspendForDetection();
+    }
+    else
+    {
+        QMetaObject::invokeMethod(ui, "SuspendForDetection",
+                                  Qt::BlockingQueuedConnection);
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(80));
+}
+
 void OpenRGBRipplePlugin::DeviceListChangedCallback(void* arg)
 {
     RippleWidget* ui = static_cast<RippleWidget*>(arg);
     if(ui)
     {
-        QMetaObject::invokeMethod(ui, "RebuildDevicesSlot", Qt::QueuedConnection);
+        ui->InvalidateDevices();
+    }
+}
+
+void OpenRGBRipplePlugin::DetectionEndCallback(void* arg)
+{
+    RippleWidget* ui = static_cast<RippleWidget*>(arg);
+    if(ui)
+    {
+        QMetaObject::invokeMethod(ui, "ResumeAfterDetection", Qt::QueuedConnection);
     }
 }
 
@@ -52,8 +87,10 @@ QWidget* OpenRGBRipplePlugin::GetWidget()
     }
     rm_->WaitForDeviceDetection();
     ui_ = new RippleWidget(rm_);
+    rm_->RegisterDetectionStartCallback(&OpenRGBRipplePlugin::DetectionStartCallback, ui_);
     rm_->RegisterDeviceListChangeCallback(&OpenRGBRipplePlugin::DeviceListChangedCallback, ui_);
     rm_->RegisterDetectionProgressCallback(&OpenRGBRipplePlugin::DeviceListChangedCallback, ui_);
+    rm_->RegisterDetectionEndCallback(&OpenRGBRipplePlugin::DetectionEndCallback, ui_);
     return ui_;
 }
 
@@ -78,8 +115,11 @@ void OpenRGBRipplePlugin::Unload()
     printf("[OpenRGBRipplePlugin] Unloading\n");
     if(rm_ && ui_)
     {
+        rm_->UnregisterDetectionStartCallback(&OpenRGBRipplePlugin::DetectionStartCallback, ui_);
         rm_->UnregisterDeviceListChangeCallback(&OpenRGBRipplePlugin::DeviceListChangedCallback, ui_);
         rm_->UnregisterDetectionProgressCallback(&OpenRGBRipplePlugin::DeviceListChangedCallback, ui_);
+        rm_->UnregisterDetectionEndCallback(&OpenRGBRipplePlugin::DetectionEndCallback, ui_);
+        ui_->Shutdown();
     }
     ui_ = nullptr;
 }

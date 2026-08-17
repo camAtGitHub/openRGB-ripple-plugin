@@ -32,7 +32,9 @@ public:
     void     Unload() override;
 
 private:
+    static void DetectionStartCallback(void* arg);
     static void DeviceListChangedCallback(void* arg);
+    static void DetectionEndCallback(void* arg);
 
     ResourceManagerInterface* rm_ = nullptr;
     RippleWidget*             ui_ = nullptr;
