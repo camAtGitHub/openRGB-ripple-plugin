@@ -22,6 +22,8 @@ INCLUDEPATH += \
 HEADERS += \
     OpenRGBRipplePlugin.h \
     RippleWidget.h \
+    DeviceSession.h \
+    RippleSettingsIO.h \
     RippleEngine.h \
     KeyboardHook.h \
     KeyMap.h
@@ -29,6 +31,7 @@ HEADERS += \
 SOURCES += \
     OpenRGBRipplePlugin.cpp \
     RippleWidget.cpp \
+    DeviceSession.cpp \
     KeyboardHook.cpp \
     KeyMap.cpp
 

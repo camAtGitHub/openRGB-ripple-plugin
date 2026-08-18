@@ -21,6 +21,9 @@ add_library(OpenRGBRipplePlugin SHARED
     OpenRGBRipplePlugin.h
     RippleWidget.cpp
     RippleWidget.h
+    DeviceSession.cpp
+    DeviceSession.h
+    RippleSettingsIO.h
     KeyboardHook.cpp
     KeyboardHook.h
     KeyMap.cpp
