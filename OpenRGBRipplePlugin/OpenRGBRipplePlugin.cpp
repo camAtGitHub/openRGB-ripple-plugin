@@ -12,16 +12,14 @@
 #include <QEvent>
 #include <QMenu>
 #include <QThread>
-#include <chrono>
 #include <cstdio>
-#include <thread>
 
 OpenRGBPluginInfo OpenRGBRipplePlugin::GetPluginInfo()
 {
     OpenRGBPluginInfo info;
     info.Name        = "OpenRGB Ripple Plugin";
     info.Description = "Artemis-style key-press ripple for RGB keyboards";
-    info.Version     = "1.0.3";
+    info.Version     = "1.0.4";
     info.Commit      = "release";
     info.URL         = "https://github.com/camAtGitHub/openRGB-ripple-plugin";
     info.Label       = "Ripple";
@@ -63,13 +61,6 @@ void OpenRGBRipplePlugin::DetectionStartCallback(void* arg)
         QMetaObject::invokeMethod(self, "OnDetectionStart",
                                   Qt::BlockingQueuedConnection);
     }
-    /* UpdateLEDs() only sets CallFlag_UpdateLEDs. DeviceCallThread then
-       runs DeviceUpdateLEDs() (USB). Cleanup() deletes the derived
-       controller first — that closes the HID handle — and only then
-       ~RGBController joins the worker. If the worker is still in the
-       USB write, ucrtbase aborts. No public drain API; wait after the
-       GUI has stopped queuing writes and before this callback returns. */
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 }
 
 void OpenRGBRipplePlugin::DeviceListChangedCallback(void* arg)

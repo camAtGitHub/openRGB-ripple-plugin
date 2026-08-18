@@ -133,7 +133,7 @@ void RippleWidget::BuildUi()
     root->setContentsMargins(16, 16, 16, 16);
     root->setSpacing(12);
 
-    auto* title = new QLabel("Ripple 1.0.3");
+    auto* title = new QLabel("Ripple 1.0.4");
     QFont f = title->font();
     f.setPointSize(16);
     f.setBold(true);
@@ -626,9 +626,12 @@ void RippleWidget::Paint()
             led.controller->colors[led.led_index] = ToRgb(c);
             dirty.insert(led.controller);
         }
+        /* DeviceUpdateLEDs writes HID on this thread. UpdateLEDs() only
+           sets a flag for DeviceCallThread; Cleanup() destroys the
+           derived controller (closes HID) before that worker is joined. */
         for(RGBController* controller : dirty)
         {
-            controller->UpdateLEDs();
+            controller->DeviceUpdateLEDs();
         }
     });
 }

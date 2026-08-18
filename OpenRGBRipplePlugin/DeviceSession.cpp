@@ -130,7 +130,8 @@ void DeviceSession::PushDirectMode()
     {
         if(d.controller && DeviceSelected(d.controller))
         {
-            d.controller->UpdateMode();
+            /* Sync apply. UpdateMode() only flags DeviceCallThread. */
+            d.controller->DeviceUpdateMode();
         }
     }
 }
