@@ -40,7 +40,7 @@ target_include_directories(OpenRGBRipplePlugin PRIVATE
 )
 
 target_compile_definitions(OpenRGBRipplePlugin PRIVATE
-    VERSION_STRING="1.0.0"
+    VERSION_STRING="1.0.2"
     OPENRGB_PLUGIN_API_VERSION=4
 )
 
