@@ -2,7 +2,26 @@
 
 export type BrushType = "ring" | "fill" | "soft";
 export type ColorMode = "solid" | "rainbow" | "random";
-export type BlendMode = "max" | "add";
+export type BlendMode =
+  | "max"
+  | "add"
+  | "xor"
+  | "screen"
+  | "overlay"
+  | "dodge"
+  | "burn"
+  | "exclusion";
+
+export const BLEND_OPTIONS: { id: BlendMode; label: string }[] = [
+  { id: "max", label: "Over" },
+  { id: "add", label: "Add" },
+  { id: "xor", label: "XOR" },
+  { id: "screen", label: "Screen" },
+  { id: "overlay", label: "Overlay" },
+  { id: "dodge", label: "Dodge" },
+  { id: "burn", label: "Burn" },
+  { id: "exclusion", label: "Exclusion" },
+];
 
 export interface RGB {
   r: number;
@@ -112,6 +131,86 @@ export function spawnRipples(
   return out;
 }
 
+function hardLight(s: number, d: number): number {
+  return s < 0.5 ? 2 * s * d : 1 - 2 * (1 - s) * (1 - d);
+}
+
+function colorDodge(s: number, d: number): number {
+  if (d <= 0) return s;
+  if (s >= 1) return 1;
+  return Math.min(1, d / (1 - s));
+}
+
+function colorBurn(s: number, d: number): number {
+  if (s <= 0) return 0;
+  return Math.max(0, 1 - (1 - d) / s);
+}
+
+/** Keep in lockstep with RippleEngine.h BlendLayer. */
+export function blendLayer(
+  src: RGB,
+  dst: RGB,
+  coverage: number,
+  mode: BlendMode,
+): RGB {
+  if (coverage <= 0.002) return dst;
+  if (coverage > 1) coverage = 1;
+  const sr = src.r / 255;
+  const sg = src.g / 255;
+  const sb = src.b / 255;
+  const dr = dst.r / 255;
+  const dg = dst.g / 255;
+  const db = dst.b / 255;
+  let br = sr;
+  let bg = sg;
+  let bb = sb;
+  switch (mode) {
+    case "add":
+      br = Math.min(1, sr + dr);
+      bg = Math.min(1, sg + dg);
+      bb = Math.min(1, sb + db);
+      break;
+    case "xor":
+      br = Math.abs(sr - dr);
+      bg = Math.abs(sg - dg);
+      bb = Math.abs(sb - db);
+      break;
+    case "screen":
+      br = 1 - (1 - sr) * (1 - dr);
+      bg = 1 - (1 - sg) * (1 - dg);
+      bb = 1 - (1 - sb) * (1 - db);
+      break;
+    case "overlay":
+      br = hardLight(sr, dr);
+      bg = hardLight(sg, dg);
+      bb = hardLight(sb, db);
+      break;
+    case "dodge":
+      br = colorDodge(sr, dr);
+      bg = colorDodge(sg, dg);
+      bb = colorDodge(sb, db);
+      break;
+    case "burn":
+      br = colorBurn(sr, dr);
+      bg = colorBurn(sg, dg);
+      bb = colorBurn(sb, db);
+      break;
+    case "exclusion":
+      br = sr + dr - 2 * sr * dr;
+      bg = sg + dg - 2 * sg * dg;
+      bb = sb + db - 2 * sb * db;
+      break;
+    default:
+      break;
+  }
+  const keep = 1 - coverage;
+  return {
+    r: (br * coverage + dr * keep) * 255,
+    g: (bg * coverage + dg * keep) * 255,
+    b: (bb * coverage + db * keep) * 255,
+  };
+}
+
 export function sampleRipples(
   settings: RippleSettings,
   ripples: readonly Ripple[],
@@ -136,18 +235,18 @@ export function sampleRipples(
       settings.fadePower,
     );
 
-    let intensity = 0;
+    let coverage = 0;
     if (settings.brush === "ring") {
-      const band = Math.abs(dist - radius);
-      intensity = Math.max(0, 1 - band / Math.max(0.05, settings.thickness));
+      const t = Math.abs(dist - radius) / Math.max(0.05, settings.thickness);
+      coverage = t >= 1 ? 0 : 1 - t * t;
     } else if (settings.brush === "fill") {
       if (dist <= radius) {
-        intensity = 1 - dist / Math.max(radius, 0.001);
+        coverage = 1 - dist / Math.max(radius, 0.001);
       }
     } else {
       const sigma = Math.max(0.15, settings.thickness * 0.85);
       const d = dist - radius;
-      intensity = Math.exp(-(d * d) / (2 * sigma * sigma));
+      coverage = Math.exp(-(d * d) / (2 * sigma * sigma));
     }
 
     if (settings.impactFlash && dist < 0.55) {
@@ -156,22 +255,20 @@ export function sampleRipples(
         elapsed < hold
           ? 1
           : Math.max(0, 1 - (elapsed - hold) / (settings.lifetime * 0.35));
-      intensity = Math.max(intensity, flash);
+      coverage = Math.max(coverage, flash);
     }
 
-    intensity *= fade * settings.brightness;
-    if (intensity <= 0.002) continue;
+    if (coverage <= 0.002 || fade <= 0.002) continue;
 
-    if (settings.blend === "add") {
-      r = Math.min(255, r + ripple.color.r * intensity);
-      g = Math.min(255, g + ripple.color.g * intensity);
-      b = Math.min(255, b + ripple.color.b * intensity);
-    } else {
-      const keep = 1 - intensity;
-      r = ripple.color.r * intensity + r * keep;
-      g = ripple.color.g * intensity + g * keep;
-      b = ripple.color.b * intensity + b * keep;
-    }
+    const src = {
+      r: ripple.color.r * fade * settings.brightness,
+      g: ripple.color.g * fade * settings.brightness,
+      b: ripple.color.b * fade * settings.brightness,
+    };
+    const out = blendLayer(src, { r, g, b }, coverage, settings.blend);
+    r = out.r;
+    g = out.g;
+    b = out.b;
   }
 
   return { r: clampByte(r), g: clampByte(g), b: clampByte(b) };

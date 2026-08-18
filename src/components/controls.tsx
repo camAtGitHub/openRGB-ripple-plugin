@@ -2,7 +2,7 @@ import { RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import type { BrushType, ColorMode } from "@/lib/ripple";
+import { BLEND_OPTIONS, type BrushType, type ColorMode } from "@/lib/ripple";
 import { useStudio } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -77,6 +77,7 @@ export function Controls() {
   const setBrush = useStudio((s) => s.setBrush);
   const setColorMode = useStudio((s) => s.setColorMode);
   const setSolidHex = useStudio((s) => s.setSolidHex);
+  const setIdleHex = useStudio((s) => s.setIdleHex);
   const reset = useStudio((s) => s.reset);
   const running = useStudio((s) => s.running);
   const demo = useStudio((s) => s.demo);
@@ -136,6 +137,40 @@ export function Controls() {
         </Row>
       ) : null}
 
+      <Row label="Background">
+        <label className="flex h-10 items-center gap-3 rounded-sm border border-border bg-bg-elevated px-3">
+          <input
+            type="color"
+            className="size-6 cursor-pointer rounded-xs border-0 bg-transparent"
+            value={rgbToHex(settings.idle.r, settings.idle.g, settings.idle.b)}
+            onChange={(e) => setIdleHex(e.target.value)}
+          />
+          <span className="font-mono text-xs text-fg-muted">
+            {rgbToHex(settings.idle.r, settings.idle.g, settings.idle.b)}
+          </span>
+        </label>
+      </Row>
+
+      <Row label="Blend">
+        <div className="grid grid-cols-4 gap-0.5 rounded-sm bg-bg-subtle p-0.5">
+          {BLEND_OPTIONS.map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => set({ blend: opt.id })}
+              className={cn(
+                "h-8 rounded-[6px] px-1 text-[0.62rem] font-medium transition-colors",
+                settings.blend === opt.id
+                  ? "bg-bg-elevated text-fg"
+                  : "text-fg-muted hover:text-fg",
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </Row>
+
       <Row label="Speed" value={`${settings.speed.toFixed(1)} u/s`}>
         <Slider
           min={4}
@@ -165,7 +200,7 @@ export function Controls() {
       </Row>
       <Row label="Fade" value={settings.fadePower.toFixed(2)}>
         <Slider
-          min={0.6}
+          min={0}
           max={3}
           step={0.05}
           value={[settings.fadePower]}

@@ -17,6 +17,7 @@ interface StudioState {
   setBrush: (brush: BrushType) => void;
   setColorMode: (colorMode: ColorMode) => void;
   setSolidHex: (hex: string) => void;
+  setIdleHex: (hex: string) => void;
   reset: () => void;
   toggleRunning: () => void;
   toggleDemo: () => void;
@@ -40,6 +41,8 @@ export const useStudio = create<StudioState>((set) => ({
     set((s) => ({ settings: { ...s.settings, colorMode } })),
   setSolidHex: (hex) =>
     set((s) => ({ settings: { ...s.settings, solid: hexToRgb(hex) } })),
+  setIdleHex: (hex) =>
+    set((s) => ({ settings: { ...s.settings, idle: hexToRgb(hex) } })),
   reset: () => set({ settings: DEFAULT_SETTINGS }),
   toggleRunning: () => set((s) => ({ running: !s.running })),
   toggleDemo: () => set((s) => ({ demo: !s.demo })),
