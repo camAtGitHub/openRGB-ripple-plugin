@@ -116,10 +116,15 @@ void RippleWidget::Shutdown()
     {
         timer_->stop();
     }
+    if(save_timer_)
+    {
+        save_timer_->stop();
+    }
     if(hook_)
     {
         hook_->Stop();
     }
+    session_ = nullptr;
 }
 
 void RippleWidget::BuildUi()
