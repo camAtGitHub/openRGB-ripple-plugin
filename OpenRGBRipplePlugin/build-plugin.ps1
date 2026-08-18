@@ -3,7 +3,11 @@
   Build OpenRGBRipplePlugin.dll for OpenRGB 1.0rc3 (Plugin API 4, Qt 5.15).
 
   powershell -ExecutionPolicy Bypass -File .\build-plugin.ps1
+  powershell -ExecutionPolicy Bypass -File .\build-plugin.ps1 -NoInstall
 #>
+param(
+    [switch]$NoInstall
+)
 $ErrorActionPreference = "Stop"
 Set-Location -LiteralPath $PSScriptRoot
 
@@ -138,13 +142,17 @@ if (-not $dll) {
     Write-Error "Build finished but OpenRGBRipplePlugin.dll was not found."
 }
 
-$destDir = Join-Path $env:APPDATA "OpenRGB\plugins"
-New-Item -ItemType Directory -Force -Path $destDir | Out-Null
-Copy-Item -Force $dll.FullName (Join-Path $destDir $dll.Name)
-
 Write-Host ""
 Write-Host "Built $($dll.FullName)" -ForegroundColor Green
-Write-Host "Copied to $destDir\$($dll.Name)"
-Write-Host ""
-Write-Host "Close OpenRGBRipple.exe if it is running."
-Write-Host "Restart OpenRGB and open the Ripple tab."
+
+if ($NoInstall) {
+    Write-Host "Skipped install (-NoInstall)."
+} else {
+    $destDir = Join-Path $env:APPDATA "OpenRGB\plugins"
+    New-Item -ItemType Directory -Force -Path $destDir | Out-Null
+    Copy-Item -Force $dll.FullName (Join-Path $destDir $dll.Name)
+    Write-Host "Copied to $destDir\$($dll.Name)"
+    Write-Host ""
+    Write-Host "Close OpenRGBRipple.exe if it is running."
+    Write-Host "Restart OpenRGB and open the Ripple tab."
+}

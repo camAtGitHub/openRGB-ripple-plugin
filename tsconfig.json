@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["vite/client", "node"],
+    "baseUrl": ".",
+    "paths": { "@/*": ["./src/*"] }
+  },
+  "include": ["src/main.tsx", "src/vite-env.d.ts", "src/styles.css", "src/components", "src/lib/keyboard-layout.ts", "src/lib/ripple.ts", "src/lib/store.ts", "src/lib/utils.ts", "vite.config.ts"]
+}

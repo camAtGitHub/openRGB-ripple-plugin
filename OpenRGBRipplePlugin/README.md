@@ -15,6 +15,8 @@ Python 3 on PATH the first time (to download Qt 5.15).
 ```powershell
 cd OpenRGBRipplePlugin
 powershell -ExecutionPolicy Bypass -File .\build-plugin.ps1
+# or, just produce the DLL (no %APPDATA% copy):
+powershell -ExecutionPolicy Bypass -File .\build-plugin.ps1 -NoInstall
 ```
 
 The script:
@@ -22,7 +24,7 @@ The script:
 1. Clones OpenRGB `release_candidate_1.0rc2` (headers only)
 2. Installs Qt 5.15.2 msvc2019_64 into `.qt\` if you do not already have it
 3. Builds `OpenRGBRipplePlugin.dll`
-4. Copies it to `%APPDATA%\OpenRGB\plugins`
+4. Copies it to `%APPDATA%\OpenRGB\plugins` unless you pass `-NoInstall`
 
 Restart OpenRGB. A **Ripple** tab appears.
 

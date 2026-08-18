@@ -1,0 +1,23 @@
+node_modules
+dist
+.vercel
+.output
+.nitro
+.tanstack
+*.log
+.DS_Store
+
+# Local quarantine — not for GitHub
+to_delete/
+
+# Plugin build leftovers
+OpenRGBRipplePlugin/OpenRGB/
+OpenRGBRipplePlugin/.qt/
+OpenRGBRipplePlugin/.venv/
+OpenRGBRipplePlugin/build/
+OpenRGBRipplePlugin/release/
+OpenRGBRipplePlugin/.qmake.stash
+OpenRGBRipplePlugin/Makefile
+OpenRGBRipplePlugin/*.o
+OpenRGBRipplePlugin/moc_*
+OpenRGBRipplePlugin/qrc_*
