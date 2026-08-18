@@ -3,9 +3,7 @@
 Windows plugin for [OpenRGB](https://openrgb.org) **1.0rc3**
 (Plugin API **4**, SDK **5**, Qt **5.15**).
 
-When you press a key, a ripple expands from that LED — Artemis 2
-**Key Press** (ring / fill / soft). A **Ripple** tab inside OpenRGB
-holds the config panel.
+The **Ripple** tab inside OpenRGB holds the config panel.
 
 ## Build the DLL (one script)
 
@@ -28,7 +26,6 @@ The script:
 
 Restart OpenRGB. A **Ripple** tab appears.
 
-Do **not** run `OpenRGBRipple.exe` at the same time — both would paint the keyboard.
 
 ## Manual install
 
@@ -56,9 +53,13 @@ Settings persist in OpenRGB’s settings store.
 
 ## Standalone SDK client (no Qt)
 
+An alternative to the plugin is `OpenRGBRipple.exe` in `sdk-client\`. It uses the OpenRGB SDK to talk to the server and paint the keyboard.
+To use it start openRGB and enabled the SDK Server (tab) on port 6742. Then in a different console run `OpenRGBRipple.exe` (or `OpenRGBRipple.exe -help` for help).
+
 If you only want the exe, see `sdk-client\build-msvc.bat`.
 That talks to the SDK server; it is **not** an OpenRGB plugin.
+Do **not** run `OpenRGBRipple.exe` at the same time — both would paint the keyboard.
 
 ## License
 
-GPL-2.0-or-later (same as OpenRGB).
+GPL-2.0 (same as OpenRGB).
