@@ -21,3 +21,9 @@ OpenRGBRipplePlugin/Makefile
 OpenRGBRipplePlugin/*.o
 OpenRGBRipplePlugin/moc_*
 OpenRGBRipplePlugin/qrc_*
+
+# Isolated implementation worktrees
+.worktrees/
+
+# Host-less test builds
+OpenRGBRipplePlugin/tests/build/
