@@ -7,6 +7,16 @@
 
 #pragma once
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+
 #include <cstdint>
 #include <functional>
 #include <mutex>
@@ -41,14 +51,12 @@ public:
 private:
 #ifdef _WIN32
     static KeyboardHook* instance_;
-    static long __stdcall LowLevelProc(int code, unsigned long long wparam, long long lparam);
+    static LRESULT CALLBACK LowLevelProc(int code, WPARAM wparam, LPARAM lparam);
+    HHOOK hook_ = nullptr;
 #endif
 
     mutable std::mutex    mutex_;
     Callback              callback_;
     std::vector<KeyEvent> queue_;
     bool                  running_ = false;
-#ifdef _WIN32
-    void*                 hook_ = nullptr;
-#endif
 };

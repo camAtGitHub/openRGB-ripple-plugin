@@ -8,6 +8,9 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
 #endif
 
@@ -38,7 +41,7 @@ std::vector<KeyEvent> KeyboardHook::Drain()
 
 #ifdef _WIN32
 
-long __stdcall KeyboardHook::LowLevelProc(int code, unsigned long long wparam, long long lparam)
+LRESULT CALLBACK KeyboardHook::LowLevelProc(int code, WPARAM wparam, LPARAM lparam)
 {
     if(instance_ && code >= 0)
     {
@@ -52,7 +55,6 @@ long __stdcall KeyboardHook::LowLevelProc(int code, unsigned long long wparam, l
                 ev.scan     = info->scanCode;
                 ev.extended = (info->flags & LLKHF_EXTENDED) != 0;
                 ev.down     = true;
-
                 Callback cb;
                 {
                     std::lock_guard<std::mutex> lock(instance_->mutex_);
@@ -66,14 +68,14 @@ long __stdcall KeyboardHook::LowLevelProc(int code, unsigned long long wparam, l
             }
         }
     }
-    return static_cast<long>(CallNextHookEx(nullptr, code, static_cast<WPARAM>(wparam), static_cast<LPARAM>(lparam)));
+    return CallNextHookEx(nullptr, code, wparam, lparam);
 }
 
 bool KeyboardHook::Start()
 {
-    if(running_)
+    if(hook_ || (instance_ && instance_ != this))
     {
-        return true;
+        return false;
     }
 
     HMODULE self = nullptr;
@@ -83,12 +85,14 @@ bool KeyboardHook::Start()
         &self);
 
     instance_ = this;
-    hook_ = SetWindowsHookExW(WH_KEYBOARD_LL, reinterpret_cast<HOOKPROC>(LowLevelProc),
-                              self, 0);
+    hook_ = SetWindowsHookExW(WH_KEYBOARD_LL, LowLevelProc, self, 0);
     running_ = hook_ != nullptr;
     if(!running_)
     {
-        instance_ = nullptr;
+        if(instance_ == this)
+        {
+            instance_ = nullptr;
+        }
     }
     return running_;
 }
@@ -97,7 +101,7 @@ void KeyboardHook::Stop()
 {
     if(hook_)
     {
-        UnhookWindowsHookEx(static_cast<HHOOK>(hook_));
+        UnhookWindowsHookEx(hook_);
         hook_ = nullptr;
     }
     running_ = false;
