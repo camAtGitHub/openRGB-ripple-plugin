@@ -137,7 +137,7 @@ void RippleWidget::BuildUi()
     root->setContentsMargins(16, 16, 16, 16);
     root->setSpacing(12);
 
-    auto* title = new QLabel("Ripple 1.0.5");
+    auto* title = new QLabel("Ripple 1.0.6");
     QFont f = title->font();
     f.setPointSize(16);
     f.setBold(true);
@@ -207,8 +207,14 @@ void RippleWidget::BuildUi()
 
     add_label("Blend");
     blend_box_ = new QComboBox();
-    blend_box_->addItems({"Over", "Add"});
-    blend_box_->setToolTip("Over replaces the background color. Add stacks the wave on top.");
+    blend_box_->addItems({
+        "Over", "Add", "XOR", "Screen", "Overlay",
+        "Color Dodge", "Color Burn", "Exclusion"
+    });
+    blend_box_->setToolTip(
+        "Over: wave hue on top. XOR: complementary (|wave-idle|). "
+        "Add / Screen / Color Dodge all lighten (look similar on bright waves). "
+        "Overlay lights. Color Burn punches a dark hole. Exclusion is a soft invert.");
     connect(blend_box_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &RippleWidget::OnUiChanged);
     grid->addWidget(blend_box_, row, 1, 1, 2);
@@ -368,7 +374,7 @@ void RippleWidget::OnUiChanged()
     s.echo_count = echoes_->value();
     s.brightness = brightness_->value() / 100.0f;
     s.impact_flash = impact_box_->isChecked();
-    s.blend      = blend_box_->currentIndex() == 1 ? RippleBlend::Add : RippleBlend::Max;
+    s.blend      = static_cast<RippleBlend>(blend_box_->currentIndex());
     s.paint_idle = !idle_box_ || !idle_box_->isChecked();
     s.enabled    = enable_box_->isChecked();
     engine_.SetSettings(s);
@@ -395,7 +401,7 @@ void RippleWidget::SyncUiFromSettings(const RippleSettings& s)
     }
     if(blend_box_)
     {
-        blend_box_->setCurrentIndex(s.blend == RippleBlend::Add ? 1 : 0);
+        blend_box_->setCurrentIndex(static_cast<int>(s.blend));
     }
     SetColorButton(color_btn_, s.solid);
     SetColorButton(idle_btn_, s.idle);

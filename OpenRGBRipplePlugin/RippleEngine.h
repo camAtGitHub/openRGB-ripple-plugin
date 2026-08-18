@@ -39,9 +39,17 @@ enum class RippleColorMode : int
 
 enum class RippleBlend : int
 {
-    Max = 0,
-    Add = 1,
+    Max        = 0, /* Over: wave replaces idle where the brush covers */
+    Add        = 1, /* Plus */
+    Xor        = 2,
+    Screen     = 3,
+    Overlay    = 4,
+    ColorDodge = 5,
+    ColorBurn  = 6,
+    Exclusion  = 7,
 };
+
+static constexpr int RippleBlendCount = 8;
 
 struct RippleSettings
 {
@@ -176,6 +184,87 @@ public:
         return HsvToRgb(h, 0.78f, 1.0f);
     }
 
+    /* src is the faded wave colour. coverage is brush shape only (0–1).
+       Fade must not be folded into coverage or Over becomes a mix with idle. */
+    static RippleRGB BlendLayer(RippleRGB src, RippleRGB dst, float coverage, RippleBlend mode)
+    {
+        if(coverage <= 0.002f)
+        {
+            return dst;
+        }
+        if(coverage > 1.0f)
+        {
+            coverage = 1.0f;
+        }
+
+        const float sr = src.r / 255.0f;
+        const float sg = src.g / 255.0f;
+        const float sb = src.b / 255.0f;
+        const float dr = dst.r / 255.0f;
+        const float dg = dst.g / 255.0f;
+        const float db = dst.b / 255.0f;
+
+        float br = sr;
+        float bg = sg;
+        float bb = sb;
+        switch(mode)
+        {
+            case RippleBlend::Add:
+                br = std::min(1.0f, sr + dr);
+                bg = std::min(1.0f, sg + dg);
+                bb = std::min(1.0f, sb + db);
+                break;
+            case RippleBlend::Xor:
+                /* |src-dst|, not bitwise XOR. Fade or a 128 that is
+                   actually 120 makes 128^x explode to cream and match Add. */
+                br = std::fabs(sr - dr);
+                bg = std::fabs(sg - dg);
+                bb = std::fabs(sb - db);
+                break;
+            case RippleBlend::Screen:
+                br = 1.0f - (1.0f - sr) * (1.0f - dr);
+                bg = 1.0f - (1.0f - sg) * (1.0f - dg);
+                bb = 1.0f - (1.0f - sb) * (1.0f - db);
+                break;
+            case RippleBlend::Overlay:
+                /* Hard Light: the wave is the top layer and decides
+                   multiply vs screen. Photoshop Overlay uses the
+                   background, which is a no-op on 0/255 LED primaries. */
+                br = HardLightChannel(sr, dr);
+                bg = HardLightChannel(sg, dg);
+                bb = HardLightChannel(sb, db);
+                break;
+            case RippleBlend::ColorDodge:
+                br = ColorDodgeChannel(sr, dr);
+                bg = ColorDodgeChannel(sg, dg);
+                bb = ColorDodgeChannel(sb, db);
+                break;
+            case RippleBlend::ColorBurn:
+                br = ColorBurnChannel(sr, dr);
+                bg = ColorBurnChannel(sg, dg);
+                bb = ColorBurnChannel(sb, db);
+                break;
+            case RippleBlend::Exclusion:
+                br = sr + dr - 2.0f * sr * dr;
+                bg = sg + dg - 2.0f * sg * dg;
+                bb = sb + db - 2.0f * sb * db;
+                break;
+            case RippleBlend::Max:
+            default:
+                br = sr;
+                bg = sg;
+                bb = sb;
+                break;
+        }
+
+        const float keep = 1.0f - coverage;
+        return {
+            (br * coverage + dr * keep) * 255.0f,
+            (bg * coverage + dg * keep) * 255.0f,
+            (bb * coverage + db * keep) * 255.0f
+        };
+    }
+
     static RippleRGB HsvToRgb(float h, float sat, float v)
     {
         const int i = static_cast<int>(std::floor(h * 6.0f));
@@ -200,6 +289,37 @@ public:
     }
 
 private:
+    static float HardLightChannel(float s, float d)
+    {
+        return s < 0.5f ? 2.0f * s * d : 1.0f - 2.0f * (1.0f - s) * (1.0f - d);
+    }
+
+    static float ColorDodgeChannel(float s, float d)
+    {
+        /* Classic dodge of 0 dest stays 0, so a red wave on blue is
+           invisible. Empty dest channels take the wave instead. */
+        if(d <= 0.0f)
+        {
+            return s;
+        }
+        if(s >= 1.0f)
+        {
+            return 1.0f;
+        }
+        const float v = d / (1.0f - s);
+        return v > 1.0f ? 1.0f : v;
+    }
+
+    static float ColorBurnChannel(float s, float d)
+    {
+        if(s <= 0.0f)
+        {
+            return 0.0f;
+        }
+        const float v = 1.0f - (1.0f - d) / s;
+        return v < 0.0f ? 0.0f : v;
+    }
+
     RippleRGB SampleUnlocked(float x, float y, double now, RippleRGB base) const
     {
         float r = base.r;
@@ -222,24 +342,24 @@ private:
                 std::max(0.0f, 1.0f - static_cast<float>(elapsed / settings_.lifetime)),
                 settings_.fade_power);
 
-            float intensity = 0.0f;
+            float coverage = 0.0f;
             if(settings_.brush == RippleBrush::Ring)
             {
                 const float band = std::fabs(dist - radius);
-                intensity = std::max(0.0f, 1.0f - band / std::max(0.05f, settings_.thickness));
+                coverage = std::max(0.0f, 1.0f - band / std::max(0.05f, settings_.thickness));
             }
             else if(settings_.brush == RippleBrush::Fill)
             {
                 if(dist <= radius)
                 {
-                    intensity = 1.0f - dist / std::max(radius, 0.001f);
+                    coverage = 1.0f - dist / std::max(radius, 0.001f);
                 }
             }
             else
             {
                 const float sigma = std::max(0.15f, settings_.thickness * 0.85f);
                 const float d = dist - radius;
-                intensity = std::exp(-(d * d) / (2.0f * sigma * sigma));
+                coverage = std::exp(-(d * d) / (2.0f * sigma * sigma));
             }
 
             if(settings_.impact_flash && dist < 0.55f)
@@ -248,30 +368,24 @@ private:
                 const float flash = elapsed < hold
                     ? 1.0f
                     : std::max(0.0f, 1.0f - static_cast<float>((elapsed - hold) / (settings_.lifetime * 0.35f)));
-                intensity = std::max(intensity, flash);
+                coverage = std::max(coverage, flash);
             }
 
-            intensity *= fade * settings_.brightness;
-            if(intensity <= 0.002f)
+            if(coverage <= 0.002f || fade <= 0.002f)
             {
                 continue;
             }
 
-            if(settings_.blend == RippleBlend::Add)
-            {
-                r = std::min(255.0f, r + ripple.color.r * intensity);
-                g = std::min(255.0f, g + ripple.color.g * intensity);
-                b = std::min(255.0f, b + ripple.color.b * intensity);
-            }
-            else
-            {
-                /* Over: ripple is a higher layer. Per-channel max hid red on yellow
-                   because idle already held R=255 and G never decreased. */
-                const float keep = 1.0f - intensity;
-                r = ripple.color.r * intensity + r * keep;
-                g = ripple.color.g * intensity + g * keep;
-                b = ripple.color.b * intensity + b * keep;
-            }
+            /* Fade/brightness dim the wave; coverage is only where the brush is. */
+            const RippleRGB src = {
+                ripple.color.r * fade * settings_.brightness,
+                ripple.color.g * fade * settings_.brightness,
+                ripple.color.b * fade * settings_.brightness
+            };
+            const RippleRGB out = BlendLayer(src, {r, g, b}, coverage, settings_.blend);
+            r = out.r;
+            g = out.g;
+            b = out.b;
         }
 
         return {r, g, b};

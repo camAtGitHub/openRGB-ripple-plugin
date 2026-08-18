@@ -47,7 +47,7 @@ static RippleSettings SettingsFromJson(const json& j, RippleSettings s)
     JsonGet(j, "paint_idle", s.paint_idle);
     if(brush >= 0 && brush <= 2) s.brush = static_cast<RippleBrush>(brush);
     if(color_mode >= 0 && color_mode <= 2) s.color_mode = static_cast<RippleColorMode>(color_mode);
-    if(blend >= 0 && blend <= 1) s.blend = static_cast<RippleBlend>(blend);
+    if(blend >= 0 && blend < RippleBlendCount) s.blend = static_cast<RippleBlend>(blend);
     return s;
 }
 
