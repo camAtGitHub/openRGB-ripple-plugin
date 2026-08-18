@@ -3,6 +3,7 @@
 \*---------------------------------------------------------*/
 
 #include "OpenRGBRipplePlugin.h"
+#include "DetectionLifecycle.h"
 #include "RippleWidget.h"
 #include "ResourceManagerInterface.h"
 #include "RGBController.h"
@@ -19,7 +20,7 @@ OpenRGBPluginInfo OpenRGBRipplePlugin::GetPluginInfo()
     OpenRGBPluginInfo info;
     info.Name        = "OpenRGB Ripple Plugin";
     info.Description = "Artemis-style key-press ripple for RGB keyboards";
-    info.Version     = "1.0.4";
+    info.Version     = "1.0.5";
     info.Commit      = "release";
     info.URL         = "https://github.com/camAtGitHub/openRGB-ripple-plugin";
     info.Label       = "Ripple";
@@ -146,18 +147,15 @@ void OpenRGBRipplePlugin::OnDetectionEnd()
     {
         return;
     }
-    if(queued_end_epoch_.load() != suspend_epoch_.load())
-    {
-        return;
-    }
-    if(rm_->GetDetectionPercent() < 100)
+    const uint64_t end_epoch = queued_end_epoch_.load();
+    if(!DetectionEndIsCurrent(end_epoch, suspend_epoch_.load()))
     {
         return;
     }
     session_.Rebuild(CopyControllers());
-    if(queued_end_epoch_.load() != suspend_epoch_.load() || paused_.load())
+    if(!DetectionEndIsCurrent(end_epoch, suspend_epoch_.load()))
     {
-        /* DetectionStart won the race; do not queue USB on dying controllers. */
+        /* A newer DetectionStart won the race; do not touch dying controllers. */
         session_.Invalidate();
         if(RippleWidget* w = ui_.data())
         {

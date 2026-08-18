@@ -4,7 +4,7 @@ TEMPLATE = lib
 TARGET = OpenRGBRipplePlugin
 CONFIG += plugin c++17 skip_target_version_ext
 
-VERSION = 1.0.4
+VERSION = 1.0.5
 DEFINES += VERSION_STRING=\\\"$$VERSION\\\"
 DEFINES += OPENRGB_PLUGIN_API_VERSION=4
 
@@ -24,6 +24,7 @@ HEADERS += \
     RippleWidget.h \
     DeviceSession.h \
     RippleSettingsIO.h \
+    DetectionLifecycle.h \
     RippleEngine.h \
     KeyboardHook.h \
     KeyMap.h

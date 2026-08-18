@@ -24,6 +24,7 @@ add_library(OpenRGBRipplePlugin SHARED
     DeviceSession.cpp
     DeviceSession.h
     RippleSettingsIO.h
+    DetectionLifecycle.h
     KeyboardHook.cpp
     KeyboardHook.h
     KeyMap.cpp
@@ -43,7 +44,7 @@ target_include_directories(OpenRGBRipplePlugin PRIVATE
 )
 
 target_compile_definitions(OpenRGBRipplePlugin PRIVATE
-    VERSION_STRING="1.0.4"
+    VERSION_STRING="1.0.5"
     OPENRGB_PLUGIN_API_VERSION=4
 )
 

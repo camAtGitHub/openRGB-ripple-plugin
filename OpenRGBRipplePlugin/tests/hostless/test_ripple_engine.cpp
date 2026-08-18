@@ -1,5 +1,6 @@
 #include "../RippleEngine.h"
 #include "../KeyMap.h"
+#include "../DetectionLifecycle.h"
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -43,6 +44,15 @@ int main()
     Expect(KeyMap::NameMatches("key: a", {"Key: A"}), "case fold");
     Expect(!KeyMap::NameMatches("Key: B", {"Key: A"}), "different key");
     Expect(KeyMap::NameMatches("Something Key: A", {"Key: A"}), "suffix match");
+
+    /* DetectionStart bumps epoch and sets paused. That pause must not
+       veto DetectionEnd — it is this cycle, not a newer Start. */
+    Expect(DetectionEndIsCurrent(1, 1),
+           "DetectionEnd after Start of the same epoch must resume");
+    Expect(!DetectionEndIsCurrent(1, 2),
+           "DetectionEnd captured before a newer Start is stale");
+    Expect(DetectionEndIsCurrent(0, 0),
+           "idle matching epochs are current");
 
     if(g_fails)
     {
