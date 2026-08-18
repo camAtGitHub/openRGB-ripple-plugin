@@ -20,7 +20,7 @@ OpenRGBPluginInfo OpenRGBRipplePlugin::GetPluginInfo()
     info.Description = "Artemis-style key-press ripple for RGB keyboards";
     info.Version     = "1.0.1";
     info.Commit      = "release";
-    info.URL         = "https://openrgb.org";
+    info.URL         = "https://github.com/camAtGitHub/openRGB-ripple-plugin";
     info.Label       = "Ripple";
     info.Location    = OPENRGB_PLUGIN_LOCATION_TOP;
     info.Icon.load(":/OpenRGBRipplePlugin.png");
