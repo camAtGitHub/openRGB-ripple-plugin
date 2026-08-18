@@ -14,6 +14,7 @@
 #include <QObject>
 #include <QPointer>
 #include <atomic>
+#include <cstdint>
 #include <vector>
 
 class RippleWidget;
@@ -54,5 +55,8 @@ private:
     DeviceSession             session_;
     QPointer<RippleWidget>    ui_;
     std::atomic<bool>         alive_{false};
+    std::atomic<bool>         paused_{false};
+    std::atomic<uint64_t>     suspend_epoch_{0};
+    std::atomic<uint64_t>     queued_end_epoch_{0};
     bool                      callbacks_registered_ = false;
 };

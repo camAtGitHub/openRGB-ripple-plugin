@@ -12,14 +12,16 @@
 #include <QEvent>
 #include <QMenu>
 #include <QThread>
+#include <chrono>
 #include <cstdio>
+#include <thread>
 
 OpenRGBPluginInfo OpenRGBRipplePlugin::GetPluginInfo()
 {
     OpenRGBPluginInfo info;
     info.Name        = "OpenRGB Ripple Plugin";
     info.Description = "Artemis-style key-press ripple for RGB keyboards";
-    info.Version     = "1.0.2";
+    info.Version     = "1.0.3";
     info.Commit      = "release";
     info.URL         = "https://github.com/camAtGitHub/openRGB-ripple-plugin";
     info.Label       = "Ripple";
@@ -37,6 +39,7 @@ void OpenRGBRipplePlugin::Load(ResourceManagerInterface* resource_manager_ptr)
 {
     rm_ = resource_manager_ptr;
     alive_ = false;
+    paused_ = false;
     printf("[OpenRGBRipplePlugin] Loaded (Plugin API %u)\n", OPENRGB_PLUGIN_API_VERSION);
 }
 
@@ -47,6 +50,10 @@ void OpenRGBRipplePlugin::DetectionStartCallback(void* arg)
     {
         return;
     }
+    /* Bump before the GUI slot so a stale queued OnDetectionEnd cannot
+       Rebuild/UpdateMode after we have decided controllers are dying. */
+    self->suspend_epoch_.fetch_add(1);
+    self->paused_.store(true);
     if(QThread::currentThread() == self->thread())
     {
         self->OnDetectionStart();
@@ -56,6 +63,13 @@ void OpenRGBRipplePlugin::DetectionStartCallback(void* arg)
         QMetaObject::invokeMethod(self, "OnDetectionStart",
                                   Qt::BlockingQueuedConnection);
     }
+    /* UpdateLEDs() only sets CallFlag_UpdateLEDs. DeviceCallThread then
+       runs DeviceUpdateLEDs() (USB). Cleanup() deletes the derived
+       controller first — that closes the HID handle — and only then
+       ~RGBController joins the worker. If the worker is still in the
+       USB write, ucrtbase aborts. No public drain API; wait after the
+       GUI has stopped queuing writes and before this callback returns. */
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 }
 
 void OpenRGBRipplePlugin::DeviceListChangedCallback(void* arg)
@@ -85,6 +99,7 @@ void OpenRGBRipplePlugin::DetectionEndCallback(void* arg)
     {
         return;
     }
+    self->queued_end_epoch_.store(self->suspend_epoch_.load());
     QMetaObject::invokeMethod(self, "OnDetectionEnd", Qt::QueuedConnection);
 }
 
@@ -107,7 +122,7 @@ void OpenRGBRipplePlugin::OnDeviceListChanged()
     {
         return;
     }
-    if(rm_->GetDetectionPercent() < 100)
+    if(paused_.load() || rm_->GetDetectionPercent() < 100)
     {
         session_.Invalidate();
         if(RippleWidget* w = ui_.data())
@@ -117,6 +132,15 @@ void OpenRGBRipplePlugin::OnDeviceListChanged()
         return;
     }
     session_.Rebuild(CopyControllers());
+    if(paused_.load())
+    {
+        session_.Invalidate();
+        if(RippleWidget* w = ui_.data())
+        {
+            w->PausePainting();
+        }
+        return;
+    }
     if(RippleWidget* w = ui_.data())
     {
         w->BindDevicesFromSession();
@@ -131,7 +155,26 @@ void OpenRGBRipplePlugin::OnDetectionEnd()
     {
         return;
     }
+    if(queued_end_epoch_.load() != suspend_epoch_.load())
+    {
+        return;
+    }
+    if(rm_->GetDetectionPercent() < 100)
+    {
+        return;
+    }
     session_.Rebuild(CopyControllers());
+    if(queued_end_epoch_.load() != suspend_epoch_.load() || paused_.load())
+    {
+        /* DetectionStart won the race; do not queue USB on dying controllers. */
+        session_.Invalidate();
+        if(RippleWidget* w = ui_.data())
+        {
+            w->PausePainting();
+        }
+        return;
+    }
+    paused_.store(false);
     if(RippleWidget* w = ui_.data())
     {
         w->BindDevicesFromSession();
@@ -182,6 +225,7 @@ QWidget* OpenRGBRipplePlugin::GetWidget()
     }
     rm_->WaitForDeviceDetection();
     alive_ = true;
+    paused_ = false;
     RegisterHostCallbacks();          /* BEFORE any RGBController* is cached */
     auto* w = new RippleWidget(rm_, &session_);
     ui_ = w;
@@ -212,6 +256,7 @@ void OpenRGBRipplePlugin::Unload()
 {
     printf("[OpenRGBRipplePlugin] Unloading\n");
     alive_ = false;
+    paused_ = true;
     UnregisterHostCallbacks();
     QCoreApplication::removePostedEvents(this, QEvent::MetaCall);
     session_.Invalidate();
