@@ -3,8 +3,10 @@
 \*---------------------------------------------------------*/
 
 #include "RippleWidget.h"
+#include "DeviceSession.h"
 #include "KeyboardHook.h"
 #include "KeyMap.h"
+#include "RippleSettingsIO.h"
 #include "ResourceManagerInterface.h"
 #include "RGBController.h"
 #include "SettingsManager.h"
@@ -19,7 +21,6 @@
 #include <QSlider>
 #include <QTimer>
 #include <QVBoxLayout>
-#include <algorithm>
 #include <chrono>
 #include <unordered_set>
 
@@ -50,63 +51,60 @@ static QSlider* MakeSlider(int min, int max, int value)
     return s;
 }
 
-RippleWidget::RippleWidget(ResourceManagerInterface* rm, QWidget* parent)
-    : QWidget(parent)
-    , rm_(rm)
+RippleWidget::RippleWidget(ResourceManagerInterface* rm, DeviceSession* session, QWidget* parent)
+    : QWidget(parent), rm_(rm), session_(session)
 {
     hook_ = new KeyboardHook();
     BuildUi();
     LoadSettings();
-    RebuildDevices();
-    PushDirectMode();
-    hook_->Start();
-
+    /* Do NOT RebuildDevices / PushDirectMode / hook Start / timer start here. */
     timer_ = new QTimer(this);
     timer_->setInterval(16);
     connect(timer_, &QTimer::timeout, this, &RippleWidget::OnTick);
-    timer_->start();
+    save_timer_ = new QTimer(this);
+    save_timer_->setSingleShot(true);
+    save_timer_->setInterval(400);
+    connect(save_timer_, &QTimer::timeout, this, &RippleWidget::FlushSettings);
 }
 
 RippleWidget::~RippleWidget()
 {
     Shutdown();
+    if(save_timer_)
+    {
+        save_timer_->stop();
+    }
     if(hook_)
     {
         delete hook_;
         hook_ = nullptr;
     }
-    SaveSettings();
+    FlushSettings();
 }
 
-void RippleWidget::InvalidateDevices()
-{
-    std::lock_guard<std::mutex> lock(device_mutex_);
-    devices_live_ = false;
-    mapped_.clear();
-    for(DeviceOpt& d : devices_)
-    {
-        d.controller = nullptr;
-    }
-}
-
-void RippleWidget::SuspendForDetection()
+void RippleWidget::PausePainting()
 {
     if(timer_)
     {
         timer_->stop();
     }
-    InvalidateDevices();
-    if(status_)
+}
+
+void RippleWidget::ResumePainting()
+{
+    if(timer_ && session_ && session_->IsLive())
     {
-        status_->setText("Paused while OpenRGB rescans devices…");
+        timer_->start();
     }
 }
 
-void RippleWidget::ResumeAfterDetection()
+void RippleWidget::StartRuntime()
 {
-    RebuildDevices();
-    PushDirectMode();
-    if(timer_)
+    if(hook_)
+    {
+        hook_->Start();
+    }
+    if(timer_ && session_ && session_->IsLive())
     {
         timer_->start();
     }
@@ -118,11 +116,15 @@ void RippleWidget::Shutdown()
     {
         timer_->stop();
     }
+    if(save_timer_)
+    {
+        save_timer_->stop();
+    }
     if(hook_)
     {
         hook_->Stop();
     }
-    InvalidateDevices();
+    session_ = nullptr;
 }
 
 void RippleWidget::BuildUi()
@@ -409,119 +411,49 @@ void RippleWidget::LoadSettings()
     {
         return;
     }
-    json j = rm_->GetSettingsManager()->GetSettings("OpenRGBRipplePlugin");
-    RippleSettings s = engine_.GetSettings();
-    if(j.contains("brush"))      s.brush = static_cast<RippleBrush>(j["brush"].get<int>());
-    if(j.contains("speed"))      s.speed = j["speed"].get<float>();
-    if(j.contains("thickness"))  s.thickness = j["thickness"].get<float>();
-    if(j.contains("lifetime"))   s.lifetime = j["lifetime"].get<float>();
-    if(j.contains("fade_power")) s.fade_power = j["fade_power"].get<float>();
-    if(j.contains("echo_count")) s.echo_count = j["echo_count"].get<int>();
-    if(j.contains("echo_delay")) s.echo_delay = j["echo_delay"].get<float>();
-    if(j.contains("brightness")) s.brightness = j["brightness"].get<float>();
-    if(j.contains("color_mode")) s.color_mode = static_cast<RippleColorMode>(j["color_mode"].get<int>());
-    if(j.contains("impact_flash")) s.impact_flash = j["impact_flash"].get<bool>();
-    if(j.contains("enabled"))    s.enabled = j["enabled"].get<bool>();
-    if(j.contains("solid_r"))    s.solid.r = j["solid_r"].get<float>();
-    if(j.contains("solid_g"))    s.solid.g = j["solid_g"].get<float>();
-    if(j.contains("solid_b"))    s.solid.b = j["solid_b"].get<float>();
-    if(j.contains("idle_r"))     s.idle.r = j["idle_r"].get<float>();
-    if(j.contains("idle_g"))     s.idle.g = j["idle_g"].get<float>();
-    if(j.contains("idle_b"))     s.idle.b = j["idle_b"].get<float>();
-    if(j.contains("blend"))      s.blend = static_cast<RippleBlend>(j["blend"].get<int>());
-    if(j.contains("paint_idle")) s.paint_idle = j["paint_idle"].get<bool>();
-    engine_.SetSettings(s);
-    SyncUiFromSettings(s);
+    try
+    {
+        json j = rm_->GetSettingsManager()->GetSettings("OpenRGBRipplePlugin");
+        engine_.SetSettings(SettingsFromJson(j, engine_.GetSettings()));
+    }
+    catch(...)
+    {
+        /* keep engine defaults */
+    }
+    SyncUiFromSettings(engine_.GetSettings());
 }
 
 void RippleWidget::SaveSettings()
+{
+    if(save_timer_)
+    {
+        save_timer_->start(); /* restart 400 ms */
+    }
+}
+
+void RippleWidget::FlushSettings()
 {
     if(!rm_ || !rm_->GetSettingsManager())
     {
         return;
     }
-    const RippleSettings s = engine_.GetSettings();
-    json j;
-    j["brush"]        = static_cast<int>(s.brush);
-    j["speed"]        = s.speed;
-    j["thickness"]    = s.thickness;
-    j["lifetime"]     = s.lifetime;
-    j["fade_power"]   = s.fade_power;
-    j["echo_count"]   = s.echo_count;
-    j["echo_delay"]   = s.echo_delay;
-    j["brightness"]   = s.brightness;
-    j["color_mode"]   = static_cast<int>(s.color_mode);
-    j["impact_flash"] = s.impact_flash;
-    j["enabled"]      = s.enabled;
-    j["solid_r"]      = s.solid.r;
-    j["solid_g"]      = s.solid.g;
-    j["solid_b"]      = s.solid.b;
-    j["idle_r"]       = s.idle.r;
-    j["idle_g"]       = s.idle.g;
-    j["idle_b"]       = s.idle.b;
-    j["blend"]        = static_cast<int>(s.blend);
-    j["paint_idle"]   = s.paint_idle;
-    rm_->GetSettingsManager()->SetSettings("OpenRGBRipplePlugin", j);
-    rm_->GetSettingsManager()->SaveSettings();
+    try
+    {
+        json j = SettingsToJson(engine_.GetSettings());
+        rm_->GetSettingsManager()->SetSettings("OpenRGBRipplePlugin", j);
+        rm_->GetSettingsManager()->SaveSettings();
+    }
+    catch(...)
+    {
+    }
 }
 
-void RippleWidget::EnsureDirectMode(RGBController* controller)
+void RippleWidget::BindDevicesFromSession()
 {
-    if(!controller)
+    if(!device_list_)
     {
         return;
     }
-    /* SetCustomMode only picks the Direct/Custom mode index.
-       Do not call UpdateMode() here — that queues a USB write on the
-       controller's worker thread and races with Rescan's destructor. */
-    controller->SetCustomMode();
-}
-
-void RippleWidget::PushDirectMode()
-{
-    std::lock_guard<std::mutex> lock(device_mutex_);
-    if(!devices_live_)
-    {
-        return;
-    }
-    for(const DeviceOpt& d : devices_)
-    {
-        if(d.controller)
-        {
-            d.controller->UpdateMode();
-        }
-    }
-}
-
-bool RippleWidget::DeviceSelected(RGBController* controller) const
-{
-    if(!controller)
-    {
-        return false;
-    }
-    bool any = false;
-    for(const DeviceOpt& d : devices_)
-    {
-        if(d.box && d.box->isChecked())
-        {
-            any = true;
-            if(d.controller == controller)
-            {
-                return true;
-            }
-        }
-    }
-    return !any;
-}
-
-void RippleWidget::RebuildDevices()
-{
-    if(!rm_ || !device_list_)
-    {
-        return;
-    }
-
-    const bool ready = rm_->GetDetectionPercent() >= 100;
 
     QLayout* list = device_list_->layout();
     if(list)
@@ -534,147 +466,97 @@ void RippleWidget::RebuildDevices()
         }
     }
 
-    std::lock_guard<std::mutex> lock(device_mutex_);
-    devices_.clear();
-    mapped_.clear();
-    devices_live_ = false;
-
-    if(!ready)
+    if(!session_ || !list)
     {
-        if(status_)
-        {
-            status_->setText("Waiting for device detection…");
-        }
         return;
     }
 
-    std::vector<RGBController*>& controllers = rm_->GetRGBControllers();
-    for(RGBController* controller : controllers)
+    const std::vector<DeviceSession::DeviceOpt> devices = session_->Devices();
+    for(const DeviceSession::DeviceOpt& d : devices)
     {
-        if(!controller)
+        auto* box = new QCheckBox(QString::fromStdString(d.name));
+        box->setChecked(d.selected);
+        connect(box, &QCheckBox::toggled, this, [this, box](bool on)
         {
-            continue;
-        }
-        const bool is_kb =
-            controller->type == DEVICE_TYPE_KEYBOARD ||
-            controller->type == DEVICE_TYPE_KEYPAD ||
-            controller->type == DEVICE_TYPE_LAPTOP;
-        if(!is_kb)
-        {
-            continue;
-        }
-
-        auto* box = new QCheckBox(QString::fromStdString(controller->name));
-        box->setChecked(true);
+            if(session_)
+            {
+                session_->SetSelectedByName(box->text().toStdString(), on);
+            }
+        });
         list->addWidget(box);
-        devices_.push_back({controller, box});
-        EnsureDirectMode(controller);
-
-        for(size_t z = 0; z < controller->zones.size(); z++)
-        {
-            zone& zn = controller->zones[z];
-            if(zn.type == ZONE_TYPE_MATRIX && zn.matrix_map && zn.matrix_map->map)
-            {
-                const unsigned int h = zn.matrix_map->height;
-                const unsigned int w = zn.matrix_map->width;
-                for(unsigned int y = 0; y < h; y++)
-                {
-                    for(unsigned int x = 0; x < w; x++)
-                    {
-                        const unsigned int idx = zn.matrix_map->map[y * w + x];
-                        if(idx == 0xFFFFFFFFu)
-                        {
-                            continue;
-                        }
-                        MappedLed led;
-                        led.controller = controller;
-                        led.led_index  = zn.start_idx + idx;
-                        led.x          = static_cast<float>(x);
-                        led.y          = static_cast<float>(y);
-                        mapped_.push_back(led);
-                    }
-                }
-            }
-            else if(zn.type == ZONE_TYPE_LINEAR || zn.type == ZONE_TYPE_SINGLE)
-            {
-                for(unsigned int i = 0; i < zn.leds_count; i++)
-                {
-                    MappedLed led;
-                    led.controller = controller;
-                    led.led_index  = zn.start_idx + i;
-                    led.x          = static_cast<float>(i);
-                    led.y          = 0.0f;
-                    mapped_.push_back(led);
-                }
-            }
-        }
     }
 
-    devices_live_ = true;
     if(status_)
     {
         status_->setText(QString("Mapped %1 LEDs on %2 keyboard(s). Hook %3.")
-                             .arg(mapped_.size())
-                             .arg(devices_.size())
+                             .arg(session_->Mapped().size())
+                             .arg(devices.size())
                              .arg(hook_ && hook_->IsRunning() ? "active" : "unavailable"));
     }
 }
 
 void RippleWidget::ConsumeKeys()
 {
-    if(!hook_)
+    if(!hook_ || !session_)
     {
         return;
     }
     const std::vector<KeyEvent> events = hook_->Drain();
-    std::lock_guard<std::mutex> lock(device_mutex_);
-    if(!devices_live_ || events.empty() || mapped_.empty())
+    if(events.empty())
     {
         return;
     }
 
-    const double now = NowSeconds();
-    for(const KeyEvent& ev : events)
+    session_->WithLive([&](const auto&, const auto& mapped)
     {
-        const std::vector<std::string> names =
-            KeyMap::NamesForVirtualKey(ev.vk, ev.scan, ev.extended);
-        if(names.empty())
+        if(mapped.empty())
         {
-            continue;
+            return;
         }
 
-        bool spawned = false;
-        for(const MappedLed& led : mapped_)
+        const double now = NowSeconds();
+        for(const KeyEvent& ev : events)
         {
-            if(!led.controller || !DeviceSelected(led.controller))
+            const std::vector<std::string> names =
+                KeyMap::NamesForVirtualKey(ev.vk, ev.scan, ev.extended);
+            if(names.empty())
             {
                 continue;
             }
-            if(led.led_index >= led.controller->leds.size())
+
+            bool spawned = false;
+            for(const auto& led : mapped)
             {
-                continue;
-            }
-            const std::string& led_name = led.controller->leds[led.led_index].name;
-            if(KeyMap::NameMatches(led_name, names))
-            {
-                engine_.Spawn(led.x, led.y, now, seed_++);
-                spawned = true;
-                break;
-            }
-        }
-        if(!spawned)
-        {
-            /* Fallback: spawn from the first selected keyboard origin. */
-            for(const MappedLed& led : mapped_)
-            {
-                if(led.controller && DeviceSelected(led.controller))
+                if(!led.controller || !session_->DeviceSelected(led.controller))
+                {
+                    continue;
+                }
+                if(led.led_index >= led.controller->leds.size())
+                {
+                    continue;
+                }
+                const std::string& led_name = led.controller->leds[led.led_index].name;
+                if(KeyMap::NameMatches(led_name, names))
                 {
                     engine_.Spawn(led.x, led.y, now, seed_++);
+                    spawned = true;
                     break;
                 }
             }
+            if(!spawned)
+            {
+                /* Fallback: spawn from the first selected keyboard origin. */
+                for(const auto& led : mapped)
+                {
+                    if(led.controller && session_->DeviceSelected(led.controller))
+                    {
+                        engine_.Spawn(led.x, led.y, now, seed_++);
+                        break;
+                    }
+                }
+            }
         }
-    }
+    });
 }
 
 static RippleRGB FromRgb(RGBColor c)
@@ -703,56 +585,57 @@ void RippleWidget::Paint()
         return;
     }
 
-    std::lock_guard<std::mutex> lock(device_mutex_);
-    if(!devices_live_)
+    if(!session_)
     {
         return;
     }
-
-    std::unordered_set<RGBController*> dirty;
-    if(s.paint_idle)
+    session_->WithLive([&](const auto& devices, const auto& mapped)
     {
-        for(const DeviceOpt& d : devices_)
+        std::unordered_set<RGBController*> dirty;
+        if(s.paint_idle)
         {
-            if(!d.controller || !DeviceSelected(d.controller))
+            for(const auto& d : devices)
+            {
+                if(!d.controller || !session_->DeviceSelected(d.controller))
+                {
+                    continue;
+                }
+                const unsigned int idle = ToRgb(s.idle);
+                for(RGBColor& c : d.controller->colors)
+                {
+                    c = idle;
+                }
+                dirty.insert(d.controller);
+            }
+        }
+
+        for(const auto& led : mapped)
+        {
+            if(!led.controller || !session_->DeviceSelected(led.controller))
             {
                 continue;
             }
-            const unsigned int idle = ToRgb(s.idle);
-            for(RGBColor& c : d.controller->colors)
+            if(led.led_index >= led.controller->colors.size())
             {
-                c = idle;
+                continue;
             }
-            dirty.insert(d.controller);
+            const RippleRGB base = s.paint_idle
+                ? s.idle
+                : FromRgb(led.controller->colors[led.led_index]);
+            const RippleRGB c = engine_.SampleOver(led.x, led.y, now, base);
+            led.controller->colors[led.led_index] = ToRgb(c);
+            dirty.insert(led.controller);
         }
-    }
-
-    for(const MappedLed& led : mapped_)
-    {
-        if(!led.controller || !DeviceSelected(led.controller))
+        for(RGBController* controller : dirty)
         {
-            continue;
+            controller->UpdateLEDs();
         }
-        if(led.led_index >= led.controller->colors.size())
-        {
-            continue;
-        }
-        const RippleRGB base = s.paint_idle
-            ? s.idle
-            : FromRgb(led.controller->colors[led.led_index]);
-        const RippleRGB c = engine_.SampleOver(led.x, led.y, now, base);
-        led.controller->colors[led.led_index] = ToRgb(c);
-        dirty.insert(led.controller);
-    }
-    for(RGBController* controller : dirty)
-    {
-        controller->UpdateLEDs();
-    }
+    });
 }
 
 void RippleWidget::OnTick()
 {
-    if(!devices_live_.load())
+    if(!session_ || !session_->IsLive())
     {
         return;
     }
@@ -764,11 +647,11 @@ void RippleWidget::OnTick()
     }
     size_t mapped = 0;
     bool live = false;
+    session_->WithLive([&](const auto&, const auto& mapped_leds)
     {
-        std::lock_guard<std::mutex> lock(device_mutex_);
-        live = devices_live_;
-        mapped = mapped_.size();
-    }
+        live = true;
+        mapped = mapped_leds.size();
+    });
     if(!live)
     {
         return;

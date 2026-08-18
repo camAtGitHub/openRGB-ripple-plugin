@@ -5,9 +5,6 @@
 #pragma once
 
 #include <QWidget>
-#include <atomic>
-#include <mutex>
-#include <vector>
 #include "RippleEngine.h"
 
 class QCheckBox;
@@ -15,51 +12,38 @@ class QComboBox;
 class QLabel;
 class QPushButton;
 class QSlider;
+class QTimer;
 class ResourceManagerInterface;
-class RGBController;
+class DeviceSession;
 
 class RippleWidget : public QWidget
 {
     Q_OBJECT
 
 public:
-    explicit RippleWidget(ResourceManagerInterface* rm, QWidget* parent = nullptr);
+    explicit RippleWidget(ResourceManagerInterface* rm, DeviceSession* session, QWidget* parent = nullptr);
     ~RippleWidget() override;
 
-    void RebuildDevices();
     void ApplySettings(const RippleSettings& s);
     RippleSettings CurrentSettings() const { return engine_.GetSettings(); }
 
-    /* Detection-thread safe: drop RGBController* before OpenRGB frees them. */
-    void InvalidateDevices();
+    void PausePainting();
+    void ResumePainting();
+    void BindDevicesFromSession();
+    void StartRuntime();
     void Shutdown();
 
 public slots:
     void SetEnabled(bool on);
-    void SuspendForDetection();
-    void ResumeAfterDetection();
 
 private slots:
     void OnUiChanged();
     void OnTick();
     void OnPickColor();
     void OnPickIdle();
+    void FlushSettings();
 
 private:
-    struct MappedLed
-    {
-        RGBController* controller = nullptr;
-        unsigned int   led_index  = 0;
-        float          x          = 0;
-        float          y          = 0;
-    };
-
-    struct DeviceOpt
-    {
-        RGBController* controller = nullptr;
-        QCheckBox*     box        = nullptr;
-    };
-
     void BuildUi();
     void LoadSettings();
     void SaveSettings();
@@ -68,11 +52,9 @@ private:
     void Paint();
     void UpdateSliderLabels();
     void SetColorButton(QPushButton* btn, const RippleRGB& c);
-    void EnsureDirectMode(RGBController* controller);
-    void PushDirectMode();
-    bool DeviceSelected(RGBController* controller) const;
 
     ResourceManagerInterface* rm_ = nullptr;
+    DeviceSession*            session_ = nullptr;
     RippleEngine              engine_;
     class KeyboardHook*       hook_ = nullptr;
 
@@ -99,11 +81,8 @@ private:
     QPushButton* idle_btn_    = nullptr;
     QWidget*    device_list_  = nullptr;
 
-    std::vector<DeviceOpt> devices_;
-    std::vector<MappedLed> mapped_;
     uint32_t               seed_ = 1;
     bool                   suppress_ui_ = false;
-    class QTimer*          timer_ = nullptr;
-    mutable std::mutex     device_mutex_;
-    std::atomic<bool>      devices_live_{false};
+    QTimer*                timer_ = nullptr;
+    QTimer*                save_timer_ = nullptr;
 };
