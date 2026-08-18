@@ -9,10 +9,15 @@
 #pragma once
 
 #include "OpenRGBPluginInterface.h"
+#include "DeviceSession.h"
 
 #include <QObject>
+#include <QPointer>
+#include <atomic>
+#include <vector>
 
 class RippleWidget;
+class RGBController;
 
 class OpenRGBRipplePlugin : public QObject, public OpenRGBPluginInterface
 {
@@ -31,11 +36,23 @@ public:
     QMenu*   GetTrayMenu() override;
     void     Unload() override;
 
+public slots:
+    void OnDetectionStart();
+    void OnDeviceListChanged();
+    void OnDetectionEnd();
+
 private:
     static void DetectionStartCallback(void* arg);
     static void DeviceListChangedCallback(void* arg);
     static void DetectionEndCallback(void* arg);
 
+    void RegisterHostCallbacks();
+    void UnregisterHostCallbacks();
+    std::vector<RGBController*> CopyControllers() const;
+
     ResourceManagerInterface* rm_ = nullptr;
-    RippleWidget*             ui_ = nullptr;
+    DeviceSession             session_;
+    QPointer<RippleWidget>    ui_;
+    std::atomic<bool>         alive_{false};
+    bool                      callbacks_registered_ = false;
 };
