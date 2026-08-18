@@ -345,8 +345,11 @@ private:
             float coverage = 0.0f;
             if(settings_.brush == RippleBrush::Ring)
             {
+                /* Parabolic crest: a linear tent is ~0.6 at the next key
+                   and mixes idle through. 1-t² stays opaque across the band. */
                 const float band = std::fabs(dist - radius);
-                coverage = std::max(0.0f, 1.0f - band / std::max(0.05f, settings_.thickness));
+                const float t = band / std::max(0.05f, settings_.thickness);
+                coverage = t >= 1.0f ? 0.0f : 1.0f - t * t;
             }
             else if(settings_.brush == RippleBrush::Fill)
             {

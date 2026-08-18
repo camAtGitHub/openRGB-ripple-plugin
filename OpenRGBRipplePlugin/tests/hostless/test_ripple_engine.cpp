@@ -80,6 +80,33 @@ int main()
         Expect(mid.g < 20, "over does not invent green");
     }
 
+    /* Ring on a key grid rarely hits dist==radius. A linear tent at
+       1 unit off a 2.6-thick ring is only ~0.6 coverage and looks washed
+       next to Soft. The crest should stay mostly the wave colour. */
+    {
+        RippleEngine ring;
+        RippleSettings rs = ring.GetSettings();
+        rs.enabled = true;
+        rs.color_mode = RippleColorMode::Solid;
+        rs.solid = {255, 0, 0};
+        rs.idle = {0, 0, 200};
+        rs.brush = RippleBrush::Ring;
+        rs.speed = 1;
+        rs.lifetime = 10;
+        rs.thickness = 2.6f;
+        rs.fade_power = 0.6f;
+        rs.brightness = 1;
+        rs.echo_count = 0;
+        rs.impact_flash = false;
+        rs.blend = RippleBlend::Max;
+        rs.paint_idle = true;
+        ring.SetSettings(rs);
+        ring.Spawn(0, 0, 0.0, 1);
+        RippleRGB off = ring.Sample(1, 0, 2.0);
+        Expect(off.r > 180, "ring 1 unit off crest still mostly red");
+        Expect(off.b < 50, "ring 1 unit off crest is not washed with idle");
+    }
+
     {
         const RippleRGB src = {255, 0, 0};
         const RippleRGB dst = {0, 0, 200};

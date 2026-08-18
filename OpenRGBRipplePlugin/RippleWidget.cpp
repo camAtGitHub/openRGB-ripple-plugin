@@ -236,7 +236,7 @@ void RippleWidget::BuildUi()
     add_slider("Speed", speed_, speed_val_, 40, 280, 140);
     add_slider("Thickness", thickness_, thickness_val_, 35, 300, 115);
     add_slider("Lifetime", lifetime_, lifetime_val_, 35, 280, 115);
-    add_slider("Fade", fade_, fade_val_, 60, 300, 135);
+    add_slider("Fade", fade_, fade_val_, 0, 300, 135);
     add_slider("Echoes", echoes_, echoes_val_, 0, 4, 1);
     add_slider("Brightness", brightness_, brightness_val_, 15, 100, 100);
     root->addLayout(grid);
