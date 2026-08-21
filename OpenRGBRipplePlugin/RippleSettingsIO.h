@@ -30,7 +30,11 @@ static RippleSettings SettingsFromJson(const json& j, RippleSettings s)
     JsonGet(j, "speed", s.speed);
     JsonGet(j, "thickness", s.thickness);
     JsonGet(j, "lifetime", s.lifetime);
-    JsonGet(j, "fade_power", s.fade_power);
+    if(!JsonGet(j, "fade", s.fade))
+    {
+        /* Legacy: fade_power was a dimming exponent, not retract seconds. May need retune. */
+        JsonGet(j, "fade_power", s.fade);
+    }
     JsonGet(j, "echo_count", s.echo_count);
     JsonGet(j, "echo_delay", s.echo_delay);
     JsonGet(j, "brightness", s.brightness);
@@ -58,7 +62,7 @@ static json SettingsToJson(const RippleSettings& s)
     j["speed"] = s.speed;
     j["thickness"] = s.thickness;
     j["lifetime"] = s.lifetime;
-    j["fade_power"] = s.fade_power;
+    j["fade"] = s.fade;
     j["echo_count"] = s.echo_count;
     j["echo_delay"] = s.echo_delay;
     j["brightness"] = s.brightness;

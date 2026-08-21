@@ -235,8 +235,8 @@ void RippleWidget::BuildUi()
     };
     add_slider("Speed", speed_, speed_val_, 40, 280, 140);
     add_slider("Thickness", thickness_, thickness_val_, 35, 300, 115);
-    add_slider("Lifetime", lifetime_, lifetime_val_, 35, 280, 115);
-    add_slider("Fade", fade_, fade_val_, 0, 300, 135);
+    add_slider("Lifetime", lifetime_, lifetime_val_, 5, 280, 115);
+    add_slider("Fade", fade_, fade_val_, 0, 300, 100);
     add_slider("Echoes", echoes_, echoes_val_, 0, 4, 1);
     add_slider("Brightness", brightness_, brightness_val_, 15, 100, 100);
     root->addLayout(grid);
@@ -370,7 +370,7 @@ void RippleWidget::OnUiChanged()
     s.speed      = speed_->value() / 10.0f;
     s.thickness  = thickness_->value() / 100.0f;
     s.lifetime   = lifetime_->value() / 100.0f;
-    s.fade_power = fade_->value() / 100.0f;
+    s.fade       = fade_->value() / 100.0f;
     s.echo_count = echoes_->value();
     s.brightness = brightness_->value() / 100.0f;
     s.impact_flash = impact_box_->isChecked();
@@ -391,7 +391,7 @@ void RippleWidget::SyncUiFromSettings(const RippleSettings& s)
     speed_->setValue(static_cast<int>(s.speed * 10));
     thickness_->setValue(static_cast<int>(s.thickness * 100));
     lifetime_->setValue(static_cast<int>(s.lifetime * 100));
-    fade_->setValue(static_cast<int>(s.fade_power * 100));
+    fade_->setValue(static_cast<int>(s.fade * 100));
     echoes_->setValue(s.echo_count);
     brightness_->setValue(static_cast<int>(s.brightness * 100));
     impact_box_->setChecked(s.impact_flash);

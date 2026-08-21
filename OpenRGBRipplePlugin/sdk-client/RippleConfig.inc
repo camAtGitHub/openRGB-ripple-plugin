@@ -26,7 +26,7 @@ static void PrintHelp()
         "  --speed <n>          wave speed, keys/sec      (default 14)\n"
         "  --thickness <n>      ring width                (default 1.15)\n"
         "  --lifetime <n>       seconds                   (default 1.15)\n"
-        "  --fade <n>           fade curve                (default 1.35)\n"
+        "  --fade <n>           fade curve                (default 1.0)\n"
         "  --echoes <n>         extra rings               (default 1)\n"
         "  --echo-delay <n>     seconds between echoes    (default 0.12)\n"
         "  --brightness <n>     0..1                      (default 1)\n"
@@ -100,7 +100,7 @@ static void ApplyJson(const std::string& j, AppConfig& cfg)
     if(JsonExtract(j, "speed", v)) cfg.fx.speed = std::strtof(v.c_str(), nullptr);
     if(JsonExtract(j, "thickness", v)) cfg.fx.thickness = std::strtof(v.c_str(), nullptr);
     if(JsonExtract(j, "lifetime", v)) cfg.fx.lifetime = std::strtof(v.c_str(), nullptr);
-    if(JsonExtract(j, "fade", v)) cfg.fx.fade_power = std::strtof(v.c_str(), nullptr);
+    if(JsonExtract(j, "fade", v)) cfg.fx.fade = std::strtof(v.c_str(), nullptr);
     if(JsonExtract(j, "echoes", v)) cfg.fx.echo_count = std::atoi(v.c_str());
     if(JsonExtract(j, "echo_delay", v)) cfg.fx.echo_delay = std::strtof(v.c_str(), nullptr);
     if(JsonExtract(j, "brightness", v)) cfg.fx.brightness = std::strtof(v.c_str(), nullptr);
@@ -160,7 +160,7 @@ static void ApplyFlag(AppConfig& cfg, const std::string& a, const char* v)
     else if(a == "--speed") cfg.fx.speed = std::strtof(v, nullptr);
     else if(a == "--thickness") cfg.fx.thickness = std::strtof(v, nullptr);
     else if(a == "--lifetime") cfg.fx.lifetime = std::strtof(v, nullptr);
-    else if(a == "--fade") cfg.fx.fade_power = std::strtof(v, nullptr);
+    else if(a == "--fade") cfg.fx.fade = std::strtof(v, nullptr);
     else if(a == "--echoes") cfg.fx.echo_count = std::atoi(v);
     else if(a == "--echo-delay") cfg.fx.echo_delay = std::strtof(v, nullptr);
     else if(a == "--brightness") cfg.fx.brightness = std::strtof(v, nullptr);

@@ -57,7 +57,7 @@ struct RippleSettings
     float           speed        = 14.0f;
     float           thickness    = 1.15f;
     float           lifetime     = 1.15f;
-    float           fade_power   = 1.35f;
+    float           fade         = 1.0f; /* seconds to retract; 0 = snap off */
     int             echo_count   = 1;
     float           echo_delay   = 0.12f;
     float           brightness   = 1.0f;
@@ -125,6 +125,7 @@ public:
     {
         std::lock_guard<std::mutex> lock(mutex_);
         const double life = settings_.lifetime
+                          + settings_.fade
                           + settings_.echo_count * settings_.echo_delay;
         size_t w = 0;
         for(size_t i = 0; i < ripples_.size(); i++)
@@ -161,6 +162,51 @@ public:
         ripples_.clear();
     }
 
+    /* Expand for `expand` seconds, then retract to origin over `fade` seconds.
+       fade <= 1e-4 → false (snap off). peak = maxRadius if directed else speed * expandT.
+       After expand: u = (elapsed - expand) / fade; radius = peak * (1 - u). */
+    static bool WaveRadius(float speed, float elapsed, float expand, float fade,
+                           float& radius, float maxRadius = 0.0f)
+    {
+        if(elapsed < 0.0f)
+        {
+            return false;
+        }
+        const float expandT = std::max(expand, 1e-6f);
+        const bool directed = maxRadius > 0.0f;
+        const float peak = directed ? maxRadius : speed * expandT;
+        const float outSpeed = peak / expandT;
+        if(elapsed <= expand)
+        {
+            radius = outSpeed * elapsed;
+            return true;
+        }
+        if(fade <= 1e-4f)
+        {
+            return false;
+        }
+        const float u = (elapsed - expand) / fade;
+        if(u >= 1.0f)
+        {
+            return false;
+        }
+        radius = peak * (1.0f - u);
+        return true;
+    }
+
+    /* Key-widths per full hue cycle. Origin is red; outward walks the spectrum. */
+    static constexpr float RainbowKeysPerCycle = 8.0f;
+
+    static RippleRGB RainbowAtDistance(float dist, float hue_offset = 0.0f)
+    {
+        float h = std::fmod(dist / RainbowKeysPerCycle + hue_offset, 1.0f);
+        if(h < 0.0f)
+        {
+            h += 1.0f;
+        }
+        return HsvToRgb(h, 0.82f, 1.0f);
+    }
+
     static RippleRGB ColorForPress(const RippleSettings& s, double now, uint32_t seed)
     {
         if(s.color_mode == RippleColorMode::Solid)
@@ -169,12 +215,8 @@ public:
         }
         if(s.color_mode == RippleColorMode::Rainbow)
         {
-            float h = static_cast<float>(std::fmod(now * 0.12 + seed * 0.17, 1.0));
-            if(h < 0)
-            {
-                h += 1.0f;
-            }
-            return HsvToRgb(h, 0.82f, 1.0f);
+            /* Placeholder: SampleUnlocked replaces this with RainbowAtDistance. */
+            return RainbowAtDistance(0.0f);
         }
         float h = static_cast<float>(std::fmod(seed * 0.61803398875, 1.0));
         if(h < 0)
@@ -329,18 +371,22 @@ private:
         for(const Ripple& ripple : ripples_)
         {
             const double elapsed = now - ripple.t0;
-            if(elapsed < 0.0 || elapsed > settings_.lifetime)
+            if(elapsed < 0.0)
             {
                 continue;
             }
 
-            const float radius = settings_.speed * static_cast<float>(elapsed);
+            const float expand = settings_.lifetime;
+            float radius = 0.0f;
+            if(!WaveRadius(settings_.speed, static_cast<float>(elapsed),
+                           expand, settings_.fade, radius))
+            {
+                continue;
+            }
+
             const float dx = x - ripple.x;
             const float dy = y - ripple.y;
             const float dist = std::sqrt(dx * dx + dy * dy);
-            const float fade = std::pow(
-                std::max(0.0f, 1.0f - static_cast<float>(elapsed / settings_.lifetime)),
-                settings_.fade_power);
 
             float coverage = 0.0f;
             if(settings_.brush == RippleBrush::Ring)
@@ -353,10 +399,8 @@ private:
             }
             else if(settings_.brush == RippleBrush::Fill)
             {
-                if(dist <= radius)
-                {
-                    coverage = 1.0f - dist / std::max(radius, 0.001f);
-                }
+                /* Hard front. Fade retracts the radius; it is not a wash. */
+                coverage = dist <= radius ? 1.0f : 0.0f;
             }
             else
             {
@@ -370,20 +414,23 @@ private:
                 const float hold = settings_.impact_hold;
                 const float flash = elapsed < hold
                     ? 1.0f
-                    : std::max(0.0f, 1.0f - static_cast<float>((elapsed - hold) / (settings_.lifetime * 0.35f)));
+                    : std::max(0.0f, 1.0f - static_cast<float>((elapsed - hold) / (expand * 0.35f)));
                 coverage = std::max(coverage, flash);
             }
 
-            if(coverage <= 0.002f || fade <= 0.002f)
+            if(coverage <= 0.002f)
             {
                 continue;
             }
 
-            /* Fade/brightness dim the wave; coverage is only where the brush is. */
+            /* Coverage is the front; RGB is wave colour * brightness only. */
+            const RippleRGB wave = settings_.color_mode == RippleColorMode::Rainbow
+                ? RainbowAtDistance(dist)
+                : ripple.color;
             const RippleRGB src = {
-                ripple.color.r * fade * settings_.brightness,
-                ripple.color.g * fade * settings_.brightness,
-                ripple.color.b * fade * settings_.brightness
+                wave.r * settings_.brightness,
+                wave.g * settings_.brightness,
+                wave.b * settings_.brightness
             };
             const RippleRGB out = BlendLayer(src, {r, g, b}, coverage, settings_.blend);
             r = out.r;

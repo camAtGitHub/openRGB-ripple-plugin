@@ -54,8 +54,7 @@ int main()
     Expect(DetectionEndIsCurrent(0, 0),
            "idle matching epochs are current");
 
-    /* Over must not mix idle hue into a full-coverage wave. Fade dims
-       the wave; it is not a hole that lets the background show through. */
+    /* Over must not mix idle hue into a full-coverage wave. */
     {
         RippleEngine over;
         RippleSettings os = over.GetSettings();
@@ -66,7 +65,7 @@ int main()
         os.brush = RippleBrush::Fill;
         os.speed = 10;
         os.lifetime = 1;
-        os.fade_power = 1;
+        os.fade = 1;
         os.brightness = 1;
         os.echo_count = 0;
         os.impact_flash = false;
@@ -94,7 +93,7 @@ int main()
         rs.speed = 1;
         rs.lifetime = 10;
         rs.thickness = 2.6f;
-        rs.fade_power = 0.6f;
+        rs.fade = 10;
         rs.brightness = 1;
         rs.echo_count = 0;
         rs.impact_flash = false;
@@ -141,6 +140,76 @@ int main()
         const RippleRGB teal2 = {0, 120, 140};
         RippleRGB xor_off = RippleEngine::BlendLayer(orange2, teal2, 1.0f, RippleBlend::Xor);
         Expect(xor_off.g < 80, "xor still pink when channels are not exact 128");
+    }
+
+    /* Phase 2: fade is retract seconds; fill is a hard front. */
+    {
+        RippleEngine snap;
+        RippleSettings ss = snap.GetSettings();
+        ss.enabled = true;
+        ss.color_mode = RippleColorMode::Solid;
+        ss.solid = {255, 0, 0};
+        ss.idle = {0, 0, 0};
+        ss.brush = RippleBrush::Fill;
+        ss.speed = 10;
+        ss.lifetime = 1;
+        ss.fade = 0;
+        ss.brightness = 1;
+        ss.echo_count = 0;
+        ss.impact_flash = false;
+        ss.blend = RippleBlend::Max;
+        ss.paint_idle = true;
+        snap.SetSettings(ss);
+        snap.Spawn(0, 0, 0.0, 1);
+        RippleRGB after = snap.Sample(0, 0, 1.01);
+        Expect(after.r < 1 && after.g < 1 && after.b < 1,
+               "fade 0 snaps off after lifetime, no dim ghost");
+    }
+
+    {
+        RippleEngine retract;
+        RippleSettings rs = retract.GetSettings();
+        rs.enabled = true;
+        rs.color_mode = RippleColorMode::Solid;
+        rs.solid = {255, 0, 0};
+        rs.idle = {0, 0, 0};
+        rs.brush = RippleBrush::Fill;
+        rs.speed = 10;
+        rs.lifetime = 1;
+        rs.fade = 3;
+        rs.brightness = 1;
+        rs.echo_count = 0;
+        rs.impact_flash = false;
+        rs.blend = RippleBlend::Max;
+        rs.paint_idle = true;
+        retract.SetSettings(rs);
+        retract.Spawn(0, 0, 0.0, 1);
+        RippleRGB far = retract.Sample(9, 0, 2.5);
+        RippleRGB near = retract.Sample(2, 0, 2.5);
+        Expect(far.r < 1, "retract radius 5: dist 9 idle");
+        Expect(near.r > 200, "retract radius 5: dist 2 on");
+    }
+
+    {
+        RippleEngine hard;
+        RippleSettings hs = hard.GetSettings();
+        hs.enabled = true;
+        hs.color_mode = RippleColorMode::Solid;
+        hs.solid = {255, 0, 0};
+        hs.idle = {0, 0, 0};
+        hs.brush = RippleBrush::Fill;
+        hs.speed = 10;
+        hs.lifetime = 1;
+        hs.fade = 1;
+        hs.brightness = 1;
+        hs.echo_count = 0;
+        hs.impact_flash = false;
+        hs.blend = RippleBlend::Max;
+        hs.paint_idle = true;
+        hard.SetSettings(hs);
+        hard.Spawn(0, 0, 0.0, 1);
+        RippleRGB edge = hard.Sample(4.95f, 0, 0.5);
+        Expect(edge.r > 200, "fill at 0.99*radius is full wave colour, not wash");
     }
 
     if(g_fails)
