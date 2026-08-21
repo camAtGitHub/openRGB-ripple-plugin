@@ -21,16 +21,25 @@ static void PrintHelp()
         "\n"
         "Brush  (Artemis Key Press)\n"
         "  --brush ring|fill|soft\n"
+        "  --shape circle|square|axis|sweep|jump\n"
+        "                      Circle / Square / Row/Col / Sweep / Dart\n"
         "  --color rainbow|solid|random\n"
         "  --solid <RRGGBB>     hex color when --color solid\n"
         "  --speed <n>          wave speed, keys/sec      (default 14)\n"
         "  --thickness <n>      ring width                (default 1.15)\n"
-        "  --lifetime <n>       seconds                   (default 1.15)\n"
-        "  --fade <n>           fade curve                (default 1.0)\n"
+        "  --lifetime <n>       expand seconds, min 0.05  (default 1.15)\n"
+        "  --fade <n>           seconds to retract; 0 = snap off (default 1.0)\n"
         "  --echoes <n>         extra rings               (default 1)\n"
         "  --echo-delay <n>     seconds between echoes    (default 0.12)\n"
         "  --brightness <n>     0..1                      (default 1)\n"
-        "  --blend over|add     over = ripple on top      (default over)\n"
+        "  --jitter <n>         Row/Col + Sweep short-way chance 0..1 (default 0.18)\n"
+        "  --span <n>           Sweep lateral 0..1        (default 1)\n"
+        "  --trail <n>          Dart trail length         (default 2.5)\n"
+        "  --blast-size <n>     Dart explosion radius     (default 3.5)\n"
+        "  --blast-shape circle|square                    (default circle)\n"
+        "  --blend over|add|xor|screen|overlay|dodge|burn|exclusion\n"
+        "                      Over, Add, XOR, Screen, Overlay, Color Dodge, Color Burn, Exclusion\n"
+        "                      also color-dodge / color-burn (default over)\n"
         "  --impact / --no-impact   flash the pressed key (default on)\n"
         "  --idle <RRGGBB>      background color\n"
         "  --debug              dump LED keymap and key hits\n"
@@ -51,6 +60,96 @@ static bool HexRgb(const std::string& hex_in, RippleRGB& out)
     out.r = float((v >> 16) & 0xFF);
     out.g = float((v >> 8) & 0xFF);
     out.b = float(v & 0xFF);
+    return true;
+}
+
+static std::string NormToken(const std::string& s)
+{
+    std::string o;
+    o.reserve(s.size());
+    for(unsigned char c : s)
+    {
+        if(c == ' ' || c == '_' || c == '-' || c == '/') continue;
+        if(c >= 'A' && c <= 'Z') o.push_back(static_cast<char>(c - 'A' + 'a'));
+        else o.push_back(static_cast<char>(c));
+    }
+    return o;
+}
+
+static bool TokenIsInt(const std::string& s, int& out)
+{
+    if(s.empty()) return false;
+    char* end = nullptr;
+    const long v = std::strtol(s.c_str(), &end, 10);
+    if(!end || end == s.c_str() || *end) return false;
+    out = static_cast<int>(v);
+    return true;
+}
+
+static bool ParseBlend(const std::string& raw, RippleBlend& out)
+{
+    int n = 0;
+    if(TokenIsInt(raw, n))
+    {
+        if(n >= 0 && n < RippleBlendCount)
+        {
+            out = static_cast<RippleBlend>(n);
+            return true;
+        }
+        return false;
+    }
+    const std::string t = NormToken(raw);
+    if(t == "over" || t == "max") out = RippleBlend::Max;
+    else if(t == "add" || t == "plus") out = RippleBlend::Add;
+    else if(t == "xor") out = RippleBlend::Xor;
+    else if(t == "screen") out = RippleBlend::Screen;
+    else if(t == "overlay") out = RippleBlend::Overlay;
+    else if(t == "dodge" || t == "colordodge") out = RippleBlend::ColorDodge;
+    else if(t == "burn" || t == "colorburn") out = RippleBlend::ColorBurn;
+    else if(t == "exclusion") out = RippleBlend::Exclusion;
+    else return false;
+    return true;
+}
+
+static bool ParseShape(const std::string& raw, RippleShape& out)
+{
+    int n = 0;
+    if(TokenIsInt(raw, n))
+    {
+        if(n >= 0 && n <= 4)
+        {
+            out = static_cast<RippleShape>(n);
+            return true;
+        }
+        return false;
+    }
+    const std::string t = NormToken(raw);
+    if(t == "circle") out = RippleShape::Circle;
+    else if(t == "square") out = RippleShape::Square;
+    else if(t == "axis" || t == "row" || t == "col" || t == "rowcol")
+        out = RippleShape::Axis;
+    else if(t == "sweep") out = RippleShape::Sweep;
+    else if(t == "jump" || t == "dart") out = RippleShape::Jump;
+    else return false;
+    return true;
+}
+
+static bool ParseBlastShape(const std::string& raw, RippleBlastShape& out)
+{
+    int n = 0;
+    if(TokenIsInt(raw, n))
+    {
+        if(n == 0 || n == 1)
+        {
+            out = static_cast<RippleBlastShape>(n);
+            return true;
+        }
+        return false;
+    }
+    const std::string t = NormToken(raw);
+    if(t == "circle") out = RippleBlastShape::Circle;
+    else if(t == "square") out = RippleBlastShape::Square;
+    else return false;
     return true;
 }
 
@@ -105,9 +204,25 @@ static void ApplyJson(const std::string& j, AppConfig& cfg)
     if(JsonExtract(j, "echo_delay", v)) cfg.fx.echo_delay = std::strtof(v.c_str(), nullptr);
     if(JsonExtract(j, "brightness", v)) cfg.fx.brightness = std::strtof(v.c_str(), nullptr);
     if(JsonExtract(j, "blend", v))
-        cfg.fx.blend = (v == "add") ? RippleBlend::Add : RippleBlend::Max;
+    {
+        if(!ParseBlend(v, cfg.fx.blend)) cfg.fx.blend = RippleBlend::Max;
+    }
     if(JsonExtract(j, "impact", v))
         cfg.fx.impact_flash = !(v == "false" || v == "0");
+    if(JsonExtract(j, "shape", v))
+    {
+        RippleShape sh;
+        if(ParseShape(v, sh)) cfg.fx.shape = sh;
+    }
+    if(JsonExtract(j, "axis_jitter", v)) cfg.fx.axis_jitter = std::strtof(v.c_str(), nullptr);
+    if(JsonExtract(j, "sweep_span", v)) cfg.fx.sweep_span = std::strtof(v.c_str(), nullptr);
+    if(JsonExtract(j, "trail_length", v)) cfg.fx.trail_length = std::strtof(v.c_str(), nullptr);
+    if(JsonExtract(j, "blast_size", v)) cfg.fx.blast_size = std::strtof(v.c_str(), nullptr);
+    if(JsonExtract(j, "blast_shape", v))
+    {
+        RippleBlastShape bs;
+        if(ParseBlastShape(v, bs)) cfg.fx.blast_shape = bs;
+    }
 }
 
 static std::string ExeDir()
@@ -149,6 +264,12 @@ static void ApplyFlag(AppConfig& cfg, const std::string& a, const char* v)
         else if(std::string(v) == "soft") cfg.fx.brush = RippleBrush::Soft;
         else cfg.fx.brush = RippleBrush::Ring;
     }
+    else if(a == "--shape")
+    {
+        RippleShape sh;
+        if(ParseShape(v, sh)) cfg.fx.shape = sh;
+        else cfg.fx.shape = RippleShape::Circle;
+    }
     else if(a == "--color")
     {
         if(std::string(v) == "solid") cfg.fx.color_mode = RippleColorMode::Solid;
@@ -164,9 +285,19 @@ static void ApplyFlag(AppConfig& cfg, const std::string& a, const char* v)
     else if(a == "--echoes") cfg.fx.echo_count = std::atoi(v);
     else if(a == "--echo-delay") cfg.fx.echo_delay = std::strtof(v, nullptr);
     else if(a == "--brightness") cfg.fx.brightness = std::strtof(v, nullptr);
+    else if(a == "--jitter") cfg.fx.axis_jitter = std::strtof(v, nullptr);
+    else if(a == "--span") cfg.fx.sweep_span = std::strtof(v, nullptr);
+    else if(a == "--trail") cfg.fx.trail_length = std::strtof(v, nullptr);
+    else if(a == "--blast-size") cfg.fx.blast_size = std::strtof(v, nullptr);
+    else if(a == "--blast-shape")
+    {
+        RippleBlastShape bs;
+        if(ParseBlastShape(v, bs)) cfg.fx.blast_shape = bs;
+        else cfg.fx.blast_shape = RippleBlastShape::Circle;
+    }
     else if(a == "--blend")
     {
-        cfg.fx.blend = (std::string(v) == "add") ? RippleBlend::Add : RippleBlend::Max;
+        if(!ParseBlend(v, cfg.fx.blend)) cfg.fx.blend = RippleBlend::Max;
     }
 }
 

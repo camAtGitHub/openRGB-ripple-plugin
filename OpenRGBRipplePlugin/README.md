@@ -40,14 +40,26 @@ If the script built the DLL but did not copy it:
 | --- | --- |
 | Enabled | Arm the effect |
 | Brush | Ring / Fill / Soft |
+| Shape | Circle, Square, Row/Col, Sweep, Dart |
 | Color | Rainbow / Solid / Random |
 | Wave | Solid wave colour (click the swatch) |
 | Background | Colour of keys the wave is not on |
-| Blend | Over (replace background) or Add (stack glow) |
+| Blend | Over, Add, XOR, Screen, Overlay, Color Dodge, Color Burn, Exclusion |
 | Disable background | Leave unused keys alone for another effect |
-| Speed, thickness, lifetime, fade, echoes, brightness | Same as the SDK client |
+| Speed | Wave speed, keys/sec |
+| Thickness | Ring width |
+| Lifetime | Expand seconds (min 0.05). Dart: idle boom waits this long from the last keydown |
+| Fade | Seconds to retract the front to the origin; 0 = snap off |
+| Echoes, brightness | Extra rings and overall brightness |
+| Jitter | Row/Col + Sweep: chance the wave takes the short way |
+| Span | Sweep lateral width |
+| Trail | Dart: keys lit behind the head. 0 = blob only |
+| Explosion | Dart blast shape: Circle or Square |
+| Blast size | Dart explosion radius in key-widths |
 | Keyboards | Which devices to paint |
 | Tray | Enable / Disable |
+
+Dart flies from the previous key to the one you just pressed. After lifetime seconds with no new key, one explosion fires at the last key and wipes in-flight darts. Pressing the same key twice only lights that key (never the whole board).
 
 Settings persist in OpenRGB’s settings store.
 

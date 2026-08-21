@@ -429,6 +429,32 @@ static bool IsKeyboard(const Device& d)
     return !d.leds.empty() && d.led_count > 20;
 }
 
+static LayoutBounds BoundsFromDevices(const std::vector<Device>& devices)
+{
+    LayoutBounds bounds;
+    bool have = false;
+    for(const Device& d : devices)
+    {
+        for(const LedPos& led : d.leds)
+        {
+            if(!have)
+            {
+                bounds.minX = bounds.maxX = led.x;
+                bounds.minY = bounds.maxY = led.y;
+                have = true;
+            }
+            else
+            {
+                bounds.minX = std::min(bounds.minX, led.x);
+                bounds.maxX = std::max(bounds.maxX, led.x);
+                bounds.minY = std::min(bounds.minY, led.y);
+                bounds.maxY = std::max(bounds.maxY, led.y);
+            }
+        }
+    }
+    return bounds;
+}
+
 struct HookState
 {
     std::mutex            mu;
@@ -630,13 +656,24 @@ int RunRipple(int argc, char** argv)
         const char* brush =
             cfg.fx.brush == RippleBrush::Fill ? "fill" :
             cfg.fx.brush == RippleBrush::Soft ? "soft" : "ring";
+        const char* shape =
+            cfg.fx.shape == RippleShape::Square ? "square" :
+            cfg.fx.shape == RippleShape::Axis   ? "axis" :
+            cfg.fx.shape == RippleShape::Sweep  ? "sweep" :
+            cfg.fx.shape == RippleShape::Jump   ? "dart" : "circle";
         const char* color =
             cfg.fx.color_mode == RippleColorMode::Solid ? "solid" :
             cfg.fx.color_mode == RippleColorMode::Random ? "random" : "rainbow";
-        std::printf("Brush %s  color %s  speed %.1f  thickness %.2f  life %.2f  echoes %d\n",
-                    brush, color, cfg.fx.speed, cfg.fx.thickness, cfg.fx.lifetime, cfg.fx.echo_count);
+        std::printf("Brush %s  shape %s  color %s  speed %.1f  thickness %.2f  life %.2f  echoes %d\n",
+                    brush, shape, color, cfg.fx.speed, cfg.fx.thickness, cfg.fx.lifetime, cfg.fx.echo_count);
     }
     uint32_t seed = 1;
+    bool have_last = false;
+    float last_x = 0;
+    float last_y = 0;
+    double lastPressAt = 0;
+    bool pending_blast = false;
+    const LayoutBounds bounds = BoundsFromDevices(devices);
     auto t0 = std::chrono::steady_clock::now();
     auto now_s = [&]()
     {
@@ -647,7 +684,7 @@ int RunRipple(int argc, char** argv)
     engine.Spawn(
         devices[0].leds[devices[0].leds.size() / 2].x,
         devices[0].leds[devices[0].leds.size() / 2].y,
-        0.0, 1);
+        0.0, 1, bounds);
 
     while(hook.run)
     {
@@ -657,6 +694,21 @@ int RunRipple(int argc, char** argv)
             evs.swap(hook.q);
         }
         const double now = now_s();
+        const RippleSettings s = engine.GetSettings();
+        const bool jump = s.shape == RippleShape::Jump;
+        auto spawn_at = [&](float x, float y)
+        {
+            pending_blast = jump;
+            if(jump)
+            {
+                engine.DropBlasts();
+            }
+            engine.Spawn(x, y, now, seed++, bounds, have_last, last_x, last_y);
+            last_x = x;
+            last_y = y;
+            lastPressAt = now;
+            have_last = true;
+        };
         for(const KeyEvent& ev : evs)
         {
             const auto names = KeyMap::NamesForVirtualKey(ev.vk, ev.scan, ev.extended);
@@ -668,7 +720,7 @@ int RunRipple(int argc, char** argv)
                 {
                     if(KeyMap::NameMatches(led.name, names))
                     {
-                        engine.Spawn(led.x, led.y, now, seed++);
+                        spawn_at(led.x, led.y);
                         hit = true;
                         hit_name = led.name;
                         break;
@@ -680,7 +732,7 @@ int RunRipple(int argc, char** argv)
             {
                 /* Matrix hole — still spawn at nearest mapped key so something shows. */
                 const LedPos& led = devices[0].leds.front();
-                engine.Spawn(led.x, led.y, now, seed++);
+                spawn_at(led.x, led.y);
                 hit_name = led.name + " (fallback)";
             }
             if(cfg.debug)
@@ -688,6 +740,17 @@ int RunRipple(int argc, char** argv)
                 std::printf("  key vk=0x%02X -> %s\n", ev.vk,
                             hit_name.empty() ? "?" : hit_name.c_str());
             }
+        }
+
+        if(jump && pending_blast && have_last
+           && now - lastPressAt >= static_cast<double>(s.lifetime))
+        {
+            Ripple lastDart;
+            const bool haveDart = engine.LastNonBlast(lastDart);
+            engine.KeepOnlyBlasts();
+            engine.SpawnBlast(last_x, last_y, now, seed++,
+                              haveDart ? &lastDart : nullptr);
+            pending_blast = false;
         }
 
         engine.Prune(now);
