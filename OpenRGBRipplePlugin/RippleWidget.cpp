@@ -138,7 +138,7 @@ void RippleWidget::BuildUi()
     root->setContentsMargins(16, 16, 16, 16);
     root->setSpacing(12);
 
-    auto* title = new QLabel("Ripple 1.0.6");
+    auto* title = new QLabel("Ripple 1.0.7");
     QFont f = title->font();
     f.setPointSize(16);
     f.setBold(true);

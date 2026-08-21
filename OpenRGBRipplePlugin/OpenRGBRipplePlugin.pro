@@ -4,7 +4,7 @@ TEMPLATE = lib
 TARGET = OpenRGBRipplePlugin
 CONFIG += plugin c++17 skip_target_version_ext
 
-VERSION = 1.0.6
+VERSION = 1.0.7
 DEFINES += VERSION_STRING=\\\"$$VERSION\\\"
 DEFINES += OPENRGB_PLUGIN_API_VERSION=4
 

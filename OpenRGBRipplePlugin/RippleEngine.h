@@ -432,7 +432,9 @@ public:
         return HsvToRgb(h, 0.82f, 1.0f);
     }
 
-    static RippleRGB ColorForPress(const RippleSettings& s, double now, uint32_t seed)
+    /* `now` is unused: rainbow is spatial (RainbowAtDistance at sample time).
+       Kept in the signature to stay lockstep with studio colorForPress. */
+    static RippleRGB ColorForPress(const RippleSettings& s, double /*now*/, uint32_t seed)
     {
         if(s.color_mode == RippleColorMode::Solid)
         {
