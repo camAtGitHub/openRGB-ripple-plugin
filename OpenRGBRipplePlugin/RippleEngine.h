@@ -11,6 +11,7 @@
 #define NOMINMAX
 #endif
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <mutex>
@@ -28,6 +29,37 @@ enum class RippleBrush : int
     Ring = 0,
     Fill = 1,
     Soft = 2,
+};
+
+enum class RippleShape : int
+{
+    Circle = 0,
+    Square = 1,
+    Axis   = 2,
+    Sweep  = 3,
+    Jump   = 4, /* Phase 4; treat as Circle until then */
+};
+
+enum class RippleAxis : int
+{
+    Horizontal = 0,
+    Vertical   = 1,
+};
+
+/* Studio DEFAULT_BOUNDS. Spawn default so Spawn(x,y,now,seed) still compiles. */
+struct LayoutBounds
+{
+    float minX = 0.0f;
+    float maxX = 22.6f;
+    float minY = 0.0f;
+    float maxY = 6.0f;
+};
+
+struct AxisHeading
+{
+    RippleAxis axis    = RippleAxis::Horizontal;
+    int        dir     = 1; /* h: -1 left / +1 right. v: -1 up / +1 down. */
+    float      travel  = 0.0f;
 };
 
 enum class RippleColorMode : int
@@ -54,6 +86,7 @@ static constexpr int RippleBlendCount = 8;
 struct RippleSettings
 {
     RippleBrush     brush        = RippleBrush::Ring;
+    RippleShape     shape        = RippleShape::Circle;
     float           speed        = 14.0f;
     float           thickness    = 1.15f;
     float           lifetime     = 1.15f;
@@ -67,17 +100,25 @@ struct RippleSettings
     bool            impact_flash = true;
     float           impact_hold  = 0.08f;
     RippleBlend     blend        = RippleBlend::Max;
+    float           axis_jitter  = 0.18f;
+    float           sweep_span   = 1.0f;
     bool            enabled      = true;
     bool            paint_idle   = true; /* false = leave idle keys for Effects / shaders */
 };
 
 struct Ripple
 {
-    float     x     = 0;
-    float     y     = 0;
-    double    t0    = 0;
-    RippleRGB color;
-    int       echo  = 0;
+    float      x       = 0;
+    float      y       = 0;
+    double     t0      = 0;
+    RippleRGB  color;
+    int        echo    = 0;
+    RippleAxis axis    = RippleAxis::Horizontal;
+    int        dir     = 0; /* 0 = not axis/sweep */
+    float      travel  = 0;
+    float      expand  = 0;
+    float      life    = 0;
+    float      spanLat = 0;
 };
 
 class RippleEngine
@@ -95,7 +136,7 @@ public:
         return settings_;
     }
 
-    void Spawn(float x, float y, double now, uint32_t seed)
+    void Spawn(float x, float y, double now, uint32_t seed, LayoutBounds bounds = LayoutBounds{})
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if(!settings_.enabled)
@@ -104,12 +145,37 @@ public:
         }
 
         RippleRGB color = ColorForPress(settings_, now, seed);
+        float expand = settings_.lifetime;
+        float spanLat = 0.0f;
+        AxisHeading heading;
+        heading.dir = 0;
+        heading.travel = 0.0f;
+        if(settings_.shape == RippleShape::Axis || settings_.shape == RippleShape::Sweep)
+        {
+            heading = PickAxisDirection(x, y, bounds, seed, settings_.axis_jitter);
+            if(settings_.shape == RippleShape::Sweep)
+            {
+                const float full = heading.axis == RippleAxis::Horizontal
+                    ? bounds.maxY - bounds.minY
+                    : bounds.maxX - bounds.minX;
+                const float span = std::max(0.0f, std::min(1.0f, settings_.sweep_span));
+                spanLat = 0.45f + span * full;
+            }
+        }
+        const float life = expand + std::max(0.0f, settings_.fade);
+
         Ripple base;
-        base.x     = x;
-        base.y     = y;
-        base.t0    = now;
-        base.color = color;
-        base.echo  = 0;
+        base.x       = x;
+        base.y       = y;
+        base.t0      = now;
+        base.color   = color;
+        base.echo    = 0;
+        base.axis    = heading.axis;
+        base.dir     = heading.dir;
+        base.travel  = heading.travel;
+        base.expand  = expand;
+        base.life    = life;
+        base.spanLat = spanLat;
         ripples_.push_back(base);
 
         for(int i = 1; i <= settings_.echo_count; i++)
@@ -119,6 +185,45 @@ public:
             echo.echo = i;
             ripples_.push_back(echo);
         }
+    }
+
+    /* Deterministic 0..1 from a press seed. Copy of studio u01 (imul hash). */
+    static double U01(uint32_t seed, uint32_t salt)
+    {
+        uint32_t t = seed * 0x9e3779b9u + salt;
+        t = (t ^ (t >> 15)) * (t | 1u);
+        t ^= t + (t ^ (t >> 7)) * (t | 61u);
+        return static_cast<double>(t ^ (t >> 14)) / 4294967296.0;
+    }
+
+    /* Coin-flip axis. On that axis, take the longer remaining path.
+       jitter 0..1 is the chance of the short way: 0 = always long, 1 = 50/50. */
+    static AxisHeading PickAxisDirection(float x, float y, const LayoutBounds& bounds,
+                                         uint32_t seed, float jitter = 0.0f)
+    {
+        const float left  = std::max(0.08f, x - bounds.minX);
+        const float right = std::max(0.08f, bounds.maxX - x);
+        const float up    = std::max(0.08f, y - bounds.minY);
+        const float down  = std::max(0.08f, bounds.maxY - y);
+
+        const RippleAxis axis = U01(seed, 1) < 0.5 ? RippleAxis::Horizontal
+                                                   : RippleAxis::Vertical;
+        const float pShort = 0.5f * std::max(0.0f, std::min(1.0f, jitter));
+        const bool takeShort = U01(seed, 2) < static_cast<double>(pShort);
+
+        const bool aLong = axis == RippleAxis::Horizontal ? (left >= right) : (up >= down);
+        const float lng = axis == RippleAxis::Horizontal
+            ? (aLong ? left : right) : (aLong ? up : down);
+        const float sh  = axis == RippleAxis::Horizontal
+            ? (aLong ? right : left) : (aLong ? down : up);
+        const int longDir  = aLong ? -1 : 1;
+        const int shortDir = aLong ?  1 : -1;
+
+        AxisHeading h;
+        h.axis   = axis;
+        h.dir    = takeShort ? shortDir : longDir;
+        h.travel = takeShort ? sh : lng;
+        return h;
     }
 
     void Prune(double now)
@@ -331,6 +436,40 @@ public:
     }
 
 private:
+    static void WaveDist(const RippleSettings& s, const Ripple& ripple,
+                         float dx, float dy, float& dist, bool& onWave)
+    {
+        if((s.shape == RippleShape::Axis || s.shape == RippleShape::Sweep)
+           && ripple.dir != 0)
+        {
+            const float along = ripple.axis == RippleAxis::Horizontal
+                ? dx * static_cast<float>(ripple.dir)
+                : dy * static_cast<float>(ripple.dir);
+            const float lateral = ripple.axis == RippleAxis::Horizontal
+                ? std::fabs(dy) : std::fabs(dx);
+            const float laneHalf = s.shape == RippleShape::Sweep
+                ? (ripple.spanLat > 0.0f ? ripple.spanLat : 99.0f)
+                : 0.52f;
+            if(lateral > laneHalf || along < -0.4f)
+            {
+                dist = 0.0f;
+                onWave = false;
+                return;
+            }
+            dist = std::max(0.0f, along);
+            onWave = true;
+            return;
+        }
+        if(s.shape == RippleShape::Square)
+        {
+            dist = std::max(std::fabs(dx), std::fabs(dy));
+            onWave = true;
+            return;
+        }
+        dist = std::sqrt(dx * dx + dy * dy);
+        onWave = true;
+    }
+
     static float HardLightChannel(float s, float d)
     {
         return s < 0.5f ? 2.0f * s * d : 1.0f - 2.0f * (1.0f - s) * (1.0f - d);
@@ -376,40 +515,46 @@ private:
                 continue;
             }
 
-            const float expand = settings_.lifetime;
+            const float expand = ripple.expand > 0.0f ? ripple.expand : settings_.lifetime;
             float radius = 0.0f;
             if(!WaveRadius(settings_.speed, static_cast<float>(elapsed),
-                           expand, settings_.fade, radius))
+                           expand, settings_.fade, radius, ripple.travel))
             {
                 continue;
             }
 
             const float dx = x - ripple.x;
             const float dy = y - ripple.y;
-            const float dist = std::sqrt(dx * dx + dy * dy);
+            const float hypot = std::sqrt(dx * dx + dy * dy);
+            float dist = hypot;
+            bool onWave = true;
+            WaveDist(settings_, ripple, dx, dy, dist, onWave);
 
             float coverage = 0.0f;
-            if(settings_.brush == RippleBrush::Ring)
+            if(onWave)
             {
-                /* Parabolic crest: a linear tent is ~0.6 at the next key
-                   and mixes idle through. 1-t² stays opaque across the band. */
-                const float band = std::fabs(dist - radius);
-                const float t = band / std::max(0.05f, settings_.thickness);
-                coverage = t >= 1.0f ? 0.0f : 1.0f - t * t;
-            }
-            else if(settings_.brush == RippleBrush::Fill)
-            {
-                /* Hard front. Fade retracts the radius; it is not a wash. */
-                coverage = dist <= radius ? 1.0f : 0.0f;
-            }
-            else
-            {
-                const float sigma = std::max(0.15f, settings_.thickness * 0.85f);
-                const float d = dist - radius;
-                coverage = std::exp(-(d * d) / (2.0f * sigma * sigma));
+                if(settings_.brush == RippleBrush::Ring)
+                {
+                    /* Parabolic crest: a linear tent is ~0.6 at the next key
+                       and mixes idle through. 1-t² stays opaque across the band. */
+                    const float band = std::fabs(dist - radius);
+                    const float t = band / std::max(0.05f, settings_.thickness);
+                    coverage = t >= 1.0f ? 0.0f : 1.0f - t * t;
+                }
+                else if(settings_.brush == RippleBrush::Fill)
+                {
+                    /* Hard front. Fade retracts the radius; it is not a wash. */
+                    coverage = dist <= radius ? 1.0f : 0.0f;
+                }
+                else
+                {
+                    const float sigma = std::max(0.15f, settings_.thickness * 0.85f);
+                    const float d = dist - radius;
+                    coverage = std::exp(-(d * d) / (2.0f * sigma * sigma));
+                }
             }
 
-            if(settings_.impact_flash && dist < 0.55f)
+            if(settings_.impact_flash && hypot < 0.55f)
             {
                 const float hold = settings_.impact_hold;
                 const float flash = elapsed < hold

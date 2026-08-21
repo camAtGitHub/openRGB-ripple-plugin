@@ -21,6 +21,7 @@
 #include <QSlider>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <algorithm>
 #include <chrono>
 #include <unordered_set>
 
@@ -174,6 +175,14 @@ void RippleWidget::BuildUi()
     grid->addWidget(brush_box_, row, 1, 1, 2);
     row++;
 
+    add_label("Shape");
+    shape_box_ = new QComboBox();
+    shape_box_->addItems({"Circle", "Square", "Row/Col", "Sweep"});
+    connect(shape_box_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &RippleWidget::OnUiChanged);
+    grid->addWidget(shape_box_, row, 1, 1, 2);
+    row++;
+
     add_label("Color");
     color_box_ = new QComboBox();
     color_box_->addItems({"Rainbow", "Solid", "Random"});
@@ -220,6 +229,26 @@ void RippleWidget::BuildUi()
     grid->addWidget(blend_box_, row, 1, 1, 2);
     row++;
 
+    jitter_lbl_ = add_label("Jitter");
+    axis_jitter_ = MakeSlider(0, 100, 18);
+    connect(axis_jitter_, &QSlider::valueChanged, this, &RippleWidget::OnUiChanged);
+    grid->addWidget(axis_jitter_, row, 1);
+    jitter_val_ = new QLabel();
+    jitter_val_->setMinimumWidth(48);
+    jitter_val_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    grid->addWidget(jitter_val_, row, 2);
+    row++;
+
+    span_lbl_ = add_label("Span");
+    sweep_span_ = MakeSlider(0, 100, 100);
+    connect(sweep_span_, &QSlider::valueChanged, this, &RippleWidget::OnUiChanged);
+    grid->addWidget(sweep_span_, row, 1);
+    span_val_ = new QLabel();
+    span_val_->setMinimumWidth(48);
+    span_val_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    grid->addWidget(span_val_, row, 2);
+    row++;
+
     auto add_slider = [&](const char* name, QSlider*& slot, QLabel*& value,
                           int min, int max, int val)
     {
@@ -241,6 +270,7 @@ void RippleWidget::BuildUi()
     add_slider("Brightness", brightness_, brightness_val_, 15, 100, 100);
     root->addLayout(grid);
     UpdateSliderLabels();
+    ShowShapeExtras();
     SetColorButton(color_btn_, engine_.GetSettings().solid);
     SetColorButton(idle_btn_, engine_.GetSettings().idle);
 
@@ -317,6 +347,28 @@ void RippleWidget::UpdateSliderLabels()
     fade_val_->setText(QString::number(fade_->value() / 100.0, 'f', 2));
     echoes_val_->setText(QString::number(echoes_->value()));
     brightness_val_->setText(QString::number(brightness_->value()) + "%");
+    if(jitter_val_ && axis_jitter_)
+    {
+        jitter_val_->setText(QString::number(axis_jitter_->value()) + "%");
+    }
+    if(span_val_ && sweep_span_)
+    {
+        span_val_->setText(QString::number(sweep_span_->value()) + "%");
+    }
+}
+
+void RippleWidget::ShowShapeExtras()
+{
+    const int shape = shape_box_ ? shape_box_->currentIndex() : 0;
+    const bool axis = shape == static_cast<int>(RippleShape::Axis)
+                   || shape == static_cast<int>(RippleShape::Sweep);
+    const bool sweep = shape == static_cast<int>(RippleShape::Sweep);
+    if(jitter_lbl_) jitter_lbl_->setVisible(axis);
+    if(axis_jitter_) axis_jitter_->setVisible(axis);
+    if(jitter_val_) jitter_val_->setVisible(axis);
+    if(span_lbl_) span_lbl_->setVisible(sweep);
+    if(sweep_span_) sweep_span_->setVisible(sweep);
+    if(span_val_) span_val_->setVisible(sweep);
 }
 
 void RippleWidget::SetColorButton(QPushButton* btn, const RippleRGB& c)
@@ -362,8 +414,10 @@ void RippleWidget::OnUiChanged()
         return;
     }
     UpdateSliderLabels();
+    ShowShapeExtras();
     RippleSettings s = engine_.GetSettings();
     s.brush      = static_cast<RippleBrush>(brush_box_->currentIndex());
+    s.shape      = static_cast<RippleShape>(shape_box_->currentIndex());
     s.color_mode = color_box_->currentIndex() == 1 ? RippleColorMode::Solid
                  : color_box_->currentIndex() == 2 ? RippleColorMode::Random
                  : RippleColorMode::Rainbow;
@@ -373,6 +427,8 @@ void RippleWidget::OnUiChanged()
     s.fade       = fade_->value() / 100.0f;
     s.echo_count = echoes_->value();
     s.brightness = brightness_->value() / 100.0f;
+    s.axis_jitter = axis_jitter_->value() / 100.0f;
+    s.sweep_span  = sweep_span_->value() / 100.0f;
     s.impact_flash = impact_box_->isChecked();
     s.blend      = static_cast<RippleBlend>(blend_box_->currentIndex());
     s.paint_idle = !idle_box_ || !idle_box_->isChecked();
@@ -386,6 +442,11 @@ void RippleWidget::SyncUiFromSettings(const RippleSettings& s)
     suppress_ui_ = true;
     enable_box_->setChecked(s.enabled);
     brush_box_->setCurrentIndex(static_cast<int>(s.brush));
+    {
+        int si = static_cast<int>(s.shape);
+        if(si < 0 || si > 3) si = 0; /* Jump until Phase 4 */
+        shape_box_->setCurrentIndex(si);
+    }
     color_box_->setCurrentIndex(s.color_mode == RippleColorMode::Solid ? 1
                               : s.color_mode == RippleColorMode::Random ? 2 : 0);
     speed_->setValue(static_cast<int>(s.speed * 10));
@@ -394,6 +455,14 @@ void RippleWidget::SyncUiFromSettings(const RippleSettings& s)
     fade_->setValue(static_cast<int>(s.fade * 100));
     echoes_->setValue(s.echo_count);
     brightness_->setValue(static_cast<int>(s.brightness * 100));
+    if(axis_jitter_)
+    {
+        axis_jitter_->setValue(static_cast<int>(s.axis_jitter * 100));
+    }
+    if(sweep_span_)
+    {
+        sweep_span_->setValue(static_cast<int>(s.sweep_span * 100));
+    }
     impact_box_->setChecked(s.impact_flash);
     if(idle_box_)
     {
@@ -406,6 +475,7 @@ void RippleWidget::SyncUiFromSettings(const RippleSettings& s)
     SetColorButton(color_btn_, s.solid);
     SetColorButton(idle_btn_, s.idle);
     UpdateSliderLabels();
+    ShowShapeExtras();
     suppress_ui_ = false;
 }
 
@@ -525,6 +595,33 @@ void RippleWidget::ConsumeKeys()
         }
 
         const double now = NowSeconds();
+        bool have_bounds = false;
+        LayoutBounds bounds;
+        for(const auto& led : mapped)
+        {
+            if(!led.controller || !session_->DeviceSelected(led.controller))
+            {
+                continue;
+            }
+            if(!have_bounds)
+            {
+                bounds.minX = bounds.maxX = led.x;
+                bounds.minY = bounds.maxY = led.y;
+                have_bounds = true;
+            }
+            else
+            {
+                bounds.minX = std::min(bounds.minX, led.x);
+                bounds.maxX = std::max(bounds.maxX, led.x);
+                bounds.minY = std::min(bounds.minY, led.y);
+                bounds.maxY = std::max(bounds.maxY, led.y);
+            }
+        }
+        if(!have_bounds)
+        {
+            return;
+        }
+
         for(const KeyEvent& ev : events)
         {
             const std::vector<std::string> names =
@@ -548,7 +645,7 @@ void RippleWidget::ConsumeKeys()
                 const std::string& led_name = led.controller->leds[led.led_index].name;
                 if(KeyMap::NameMatches(led_name, names))
                 {
-                    engine_.Spawn(led.x, led.y, now, seed_++);
+                    engine_.Spawn(led.x, led.y, now, seed_++, bounds);
                     spawned = true;
                     break;
                 }
@@ -560,7 +657,7 @@ void RippleWidget::ConsumeKeys()
                 {
                     if(led.controller && session_->DeviceSelected(led.controller))
                     {
-                        engine_.Spawn(led.x, led.y, now, seed_++);
+                        engine_.Spawn(led.x, led.y, now, seed_++, bounds);
                         break;
                     }
                 }

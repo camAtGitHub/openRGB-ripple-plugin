@@ -212,6 +212,135 @@ int main()
         Expect(edge.r > 200, "fill at 0.99*radius is full wave colour, not wash");
     }
 
+    /* Phase 3: Chebyshev square vs Euclidean circle. fade 0, speed 10, t=0.5 radius 5. */
+    {
+        RippleEngine sq;
+        RippleSettings ss = sq.GetSettings();
+        ss.enabled = true;
+        ss.color_mode = RippleColorMode::Solid;
+        ss.solid = {255, 0, 0};
+        ss.idle = {0, 0, 0};
+        ss.brush = RippleBrush::Fill;
+        ss.shape = RippleShape::Square;
+        ss.speed = 10;
+        ss.lifetime = 1;
+        ss.fade = 0;
+        ss.brightness = 1;
+        ss.echo_count = 0;
+        ss.impact_flash = false;
+        ss.blend = RippleBlend::Max;
+        ss.paint_idle = true;
+        sq.SetSettings(ss);
+        sq.Spawn(0, 0, 0.0, 1);
+        RippleRGB inside = sq.Sample(4, 4, 0.5);
+        Expect(inside.r > 200, "square fill Chebyshev (4,4) on");
+        RippleRGB outside = sq.Sample(5.1f, 0, 0.5);
+        Expect(outside.r < 1 && outside.g < 1 && outside.b < 1,
+               "square fill (5.1,0) idle");
+        RippleRGB corner = sq.Sample(5, 5, 0.5);
+        Expect(corner.r > 200, "square fill Chebyshev corner (5,5) on");
+    }
+
+    {
+        RippleEngine circ;
+        RippleSettings cs = circ.GetSettings();
+        cs.enabled = true;
+        cs.color_mode = RippleColorMode::Solid;
+        cs.solid = {255, 0, 0};
+        cs.idle = {0, 0, 0};
+        cs.brush = RippleBrush::Fill;
+        cs.shape = RippleShape::Circle;
+        cs.speed = 10;
+        cs.lifetime = 1;
+        cs.fade = 0;
+        cs.brightness = 1;
+        cs.echo_count = 0;
+        cs.impact_flash = false;
+        cs.blend = RippleBlend::Max;
+        cs.paint_idle = true;
+        circ.SetSettings(cs);
+        circ.Spawn(0, 0, 0.0, 1);
+        RippleRGB euclid_corner = circ.Sample(5, 5, 0.5);
+        Expect(euclid_corner.r < 1 && euclid_corner.g < 1 && euclid_corner.b < 1,
+               "circle fill Euclidean corner (5,5) idle");
+        RippleRGB near = circ.Sample(4.95f, 0, 0.5);
+        Expect(near.r > 200, "circle fill (4.95,0) on");
+    }
+
+    {
+        float r = 0.0f;
+        const bool ok = RippleEngine::WaveRadius(14.0f, 0.35f, 0.35f, 0.0f, r, 14.0f);
+        Expect(ok && std::fabs(r - 14.0f) < 1e-4f,
+               "directed waveRadius lifetime 0.35 travel 14 -> radius 14");
+    }
+
+    /* jitter 0 from np0: only left (h dir -1) or up (v dir -1). */
+    {
+        LayoutBounds b; /* 0, 22.6, 0, 6 */
+        const float nx = 19.6f;
+        const float ny = 5.5f;
+        /* Studio pickAxisDirection np0 jitter 0, seeds 1..64: L=left U=up. */
+        const char* studio =
+            "LLUULULLLUULULLL"
+            "ULLULLLULUUULLLL"
+            "LLLULLULLLLULLUL"
+            "ULLUULLLULULLLUU";
+        for(uint32_t seed = 1; seed <= 64; seed++)
+        {
+            AxisHeading h = RippleEngine::PickAxisDirection(nx, ny, b, seed, 0.0f);
+            const bool left = h.axis == RippleAxis::Horizontal && h.dir < 0;
+            const bool up = h.axis == RippleAxis::Vertical && h.dir < 0;
+            char msg[80];
+            std::snprintf(msg, sizeof(msg), "np0 jitter 0 seed %u is left or up", seed);
+            Expect(left || up, msg);
+            const char want = studio[seed - 1];
+            std::snprintf(msg, sizeof(msg), "np0 jitter 0 seed %u matches studio", seed);
+            Expect((want == 'L' && left) || (want == 'U' && up), msg);
+        }
+
+        RippleEngine ax;
+        RippleSettings as = ax.GetSettings();
+        as.enabled = true;
+        as.color_mode = RippleColorMode::Solid;
+        as.solid = {255, 0, 0};
+        as.idle = {0, 0, 0};
+        as.brush = RippleBrush::Fill;
+        as.shape = RippleShape::Axis;
+        as.axis_jitter = 0.0f;
+        as.speed = 10;
+        as.lifetime = 1;
+        as.fade = 0;
+        as.brightness = 1;
+        as.echo_count = 0;
+        as.impact_flash = false;
+        as.blend = RippleBlend::Max;
+        as.paint_idle = true;
+        ax.SetSettings(as);
+        /* t=0.8 so up travel/2=2.75 would miss (ny-3); late expand lights long-way. */
+        const double t = 0.8;
+        for(uint32_t seed = 1; seed <= 64; seed++)
+        {
+            ax.Clear();
+            ax.Spawn(nx, ny, 0.0, seed, b);
+            RippleRGB right = ax.Sample(nx + 2.0f, ny, t);
+            RippleRGB down  = ax.Sample(nx, ny + 0.6f, t);
+            RippleRGB left  = ax.Sample(nx - 3.0f, ny, t);
+            RippleRGB up    = ax.Sample(nx, ny - 3.0f, t);
+            char rmsg[96];
+            std::snprintf(rmsg, sizeof(rmsg),
+                          "np0 jitter 0 seed %u short-way right idle", seed);
+            Expect(right.r < 1 && right.g < 1 && right.b < 1, rmsg);
+            char dmsg[96];
+            std::snprintf(dmsg, sizeof(dmsg),
+                          "np0 jitter 0 seed %u short-way down off-lane idle", seed);
+            Expect(down.r < 1 && down.g < 1 && down.b < 1, dmsg);
+            char lmsg[96];
+            std::snprintf(lmsg, sizeof(lmsg),
+                          "np0 jitter 0 seed %u long-way left or up on", seed);
+            Expect(left.r > 200 || up.r > 200, lmsg);
+        }
+    }
+
     if(g_fails)
     {
         std::fprintf(stderr, "%d failed\n", g_fails);

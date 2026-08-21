@@ -51,6 +51,7 @@ private:
     void ConsumeKeys();
     void Paint();
     void UpdateSliderLabels();
+    void ShowShapeExtras();
     void SetColorButton(QPushButton* btn, const RippleRGB& c);
 
     ResourceManagerInterface* rm_ = nullptr;
@@ -60,6 +61,7 @@ private:
 
     QCheckBox*  enable_box_   = nullptr;
     QComboBox*  brush_box_    = nullptr;
+    QComboBox*  shape_box_    = nullptr;
     QComboBox*  color_box_    = nullptr;
     QComboBox*  blend_box_    = nullptr;
     QSlider*    speed_        = nullptr;
@@ -68,12 +70,18 @@ private:
     QSlider*    fade_         = nullptr;
     QSlider*    echoes_       = nullptr;
     QSlider*    brightness_   = nullptr;
+    QSlider*    axis_jitter_  = nullptr;
+    QSlider*    sweep_span_   = nullptr;
     QLabel*     speed_val_    = nullptr;
     QLabel*     thickness_val_= nullptr;
     QLabel*     lifetime_val_ = nullptr;
     QLabel*     fade_val_     = nullptr;
     QLabel*     echoes_val_   = nullptr;
     QLabel*     brightness_val_ = nullptr;
+    QLabel*     jitter_lbl_   = nullptr;
+    QLabel*     jitter_val_   = nullptr;
+    QLabel*     span_lbl_     = nullptr;
+    QLabel*     span_val_     = nullptr;
     QCheckBox*  impact_box_   = nullptr;
     QCheckBox*  idle_box_     = nullptr;
     QLabel*     status_       = nullptr;
