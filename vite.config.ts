@@ -15,13 +15,13 @@ export default defineConfig({
   },
   server: {
     host: "0.0.0.0",
-    port: 8080,
-    strictPort: false,
+    port: 8085,
+    strictPort: true,
   },
   preview: {
     host: "0.0.0.0",
-    port: 8080,
-    strictPort: false,
+    port: 8085,
+    strictPort: true,
   },
   build: {
     outDir: "dist",

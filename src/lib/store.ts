@@ -4,6 +4,7 @@ import {
   type BrushType,
   type ColorMode,
   type RippleSettings,
+  type WaveShape,
 } from "./ripple";
 
 type Patch = Partial<RippleSettings>;
@@ -15,6 +16,7 @@ interface StudioState {
   presses: number;
   set: (patch: Patch) => void;
   setBrush: (brush: BrushType) => void;
+  setShape: (shape: WaveShape) => void;
   setColorMode: (colorMode: ColorMode) => void;
   setSolidHex: (hex: string) => void;
   setIdleHex: (hex: string) => void;
@@ -37,6 +39,7 @@ export const useStudio = create<StudioState>((set) => ({
   presses: 0,
   set: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
   setBrush: (brush) => set((s) => ({ settings: { ...s.settings, brush } })),
+  setShape: (shape) => set((s) => ({ settings: { ...s.settings, shape } })),
   setColorMode: (colorMode) =>
     set((s) => ({ settings: { ...s.settings, colorMode } })),
   setSolidHex: (hex) =>

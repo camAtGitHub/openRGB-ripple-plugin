@@ -11,6 +11,7 @@ import {
   pruneRipples,
   rgbCss,
   sampleRipples,
+  spawnBlast,
   spawnRipples,
   type RGB,
   type Ripple,
@@ -20,16 +21,16 @@ import { useStudio } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
 const DEMO_SEQ = [
-  "KeyA",
-  "KeyS",
-  "KeyD",
-  "KeyF",
   "KeyJ",
-  "KeyK",
-  "KeyL",
+  "F12",
+  "Numpad0",
+  "KeyA",
+  "Escape",
   "Space",
+  "KeyF",
+  "F1",
+  "Numpad7",
   "Enter",
-  "KeyW",
   "ArrowUp",
   "KeyQ",
 ];
@@ -101,6 +102,9 @@ export function KeyboardStage() {
   const settingsRef = useRef<RippleSettings>(settings);
   const runningRef = useRef(running);
   const seedRef = useRef(0);
+  const lastPosRef = useRef<{ x: number; y: number } | null>(null);
+  const lastPressAtRef = useRef(0);
+  const pendingBlastRef = useRef(false);
   const [unit, setUnit] = useState(28);
   const [colors, setColors] = useState<Record<string, RGB>>({});
 
@@ -123,8 +127,23 @@ export function KeyboardStage() {
     if (!runningRef.current) return;
     seedRef.current += 1;
     const c = keyCenter(key);
+    const from = lastPosRef.current ?? c;
+    lastPosRef.current = c;
+    lastPressAtRef.current = now;
+    pendingBlastRef.current = settingsRef.current.shape === "jump";
+    if (settingsRef.current.shape === "jump") {
+      ripplesRef.current = ripplesRef.current.filter((r) => !r.blast);
+    }
     ripplesRef.current.push(
-      ...spawnRipples(settingsRef.current, c.x, c.y, now, seedRef.current),
+      ...spawnRipples(
+        settingsRef.current,
+        c.x,
+        c.y,
+        now,
+        seedRef.current,
+        { minX: 0, maxX: LAYOUT_WIDTH, minY: 0, maxY: LAYOUT_HEIGHT },
+        from,
+      ),
     );
     bumpPress();
   };
@@ -164,6 +183,29 @@ export function KeyboardStage() {
     const tick = () => {
       const now = performance.now() / 1000;
       const s = settingsRef.current;
+      if (
+        s.shape === "jump" &&
+        pendingBlastRef.current &&
+        lastPosRef.current &&
+        now - lastPressAtRef.current >= s.lifetime
+      ) {
+        seedRef.current += 1;
+        const lastDart = [...ripplesRef.current]
+          .reverse()
+          .find((r) => !r.blast);
+        ripplesRef.current = ripplesRef.current.filter((r) => r.blast);
+        ripplesRef.current.push(
+          spawnBlast(
+            s,
+            lastPosRef.current.x,
+            lastPosRef.current.y,
+            now,
+            seedRef.current,
+            lastDart,
+          ),
+        );
+        pendingBlastRef.current = false;
+      }
       pruneRipples(ripplesRef.current, now, s.lifetime + s.echoCount * s.echoDelay);
       const next: Record<string, RGB> = {};
       for (const key of KEYBOARD) {
