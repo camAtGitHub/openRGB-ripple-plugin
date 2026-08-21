@@ -49,7 +49,7 @@ If the script built the DLL but did not copy it:
 | Speed | Wave speed, keys/sec |
 | Thickness | Ring width |
 | Lifetime | Max expand seconds (min 0.05). Sweep / Row-Col travel at Speed and may finish sooner. Dart: idle boom waits this long from the last keydown |
-| Fade | Seconds to retract the front to the origin; 0 = snap off |
+| Retract | Seconds to pull the front back to the key; 0 = snap off |
 | Echoes, brightness | Extra rings and overall brightness |
 | Jitter | Row/Col + Sweep: chance the wave takes the short way |
 | Span | Sweep lateral width |

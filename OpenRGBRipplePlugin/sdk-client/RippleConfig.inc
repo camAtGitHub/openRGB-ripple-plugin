@@ -28,7 +28,8 @@ static void PrintHelp()
         "  --speed <n>          wave speed, keys/sec      (default 14)\n"
         "  --thickness <n>      ring width                (default 1.15)\n"
         "  --lifetime <n>       max expand seconds, min 0.05 (default 1.15)\n"
-        "  --fade <n>           seconds to retract; 0 = snap off (default 1.0)\n"
+        "  --retract <n>        seconds to pull back; 0 = snap off (default 1.0)\n"
+        "  --fade <n>           same as --retract\n"
         "  --echoes <n>         extra rings               (default 1)\n"
         "  --echo-delay <n>     seconds between echoes    (default 0.12)\n"
         "  --brightness <n>     0..1                      (default 1)\n"
@@ -281,7 +282,7 @@ static void ApplyFlag(AppConfig& cfg, const std::string& a, const char* v)
     else if(a == "--speed") cfg.fx.speed = std::strtof(v, nullptr);
     else if(a == "--thickness") cfg.fx.thickness = std::strtof(v, nullptr);
     else if(a == "--lifetime") cfg.fx.lifetime = std::strtof(v, nullptr);
-    else if(a == "--fade") cfg.fx.fade = std::strtof(v, nullptr);
+    else if(a == "--retract" || a == "--fade") cfg.fx.fade = std::strtof(v, nullptr);
     else if(a == "--echoes") cfg.fx.echo_count = std::atoi(v);
     else if(a == "--echo-delay") cfg.fx.echo_delay = std::strtof(v, nullptr);
     else if(a == "--brightness") cfg.fx.brightness = std::strtof(v, nullptr);

@@ -296,7 +296,10 @@ void RippleWidget::BuildUi()
     lifetime_->setToolTip(
         "Max expand time. Sweep / Row-Col travel at Speed and may finish sooner. "
         "Dart: idle after the last key before the boom.");
-    add_slider("Fade", fade_, fade_val_, 0, 300, 100);
+    add_slider("Retract", fade_, fade_val_, 0, 300, 100);
+    fade_->setToolTip(
+        "Seconds to pull the front back to the key. 0 snaps off. "
+        "Dart: how long the boom shrinks back.");
     add_slider("Echoes", echoes_, echoes_val_, 0, 4, 1);
     add_slider("Brightness", brightness_, brightness_val_, 15, 100, 100);
     root->addLayout(grid);
@@ -375,7 +378,7 @@ void RippleWidget::UpdateSliderLabels()
     speed_val_->setText(QString::number(speed_->value() / 10.0, 'f', 1));
     thickness_val_->setText(QString::number(thickness_->value() / 100.0, 'f', 2));
     lifetime_val_->setText(QString::number(lifetime_->value() / 100.0, 'f', 2) + "s");
-    fade_val_->setText(QString::number(fade_->value() / 100.0, 'f', 2));
+    fade_val_->setText(QString::number(fade_->value() / 100.0, 'f', 2) + "s");
     echoes_val_->setText(QString::number(echoes_->value()));
     brightness_val_->setText(QString::number(brightness_->value()) + "%");
     if(jitter_val_ && axis_jitter_)

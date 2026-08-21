@@ -315,7 +315,7 @@ export function Controls() {
         {settings.shape === "sweep" || settings.shape === "axis" ? (
           <p className="text-[0.68rem] leading-snug text-fg-subtle">
             Max expand time. Speed is how fast it travels — it may finish
-            sooner, then Fade retracts.
+            sooner, then Retract pulls it back.
           </p>
         ) : settings.shape === "jump" ? (
           <p className="text-[0.68rem] leading-snug text-fg-subtle">
@@ -323,7 +323,7 @@ export function Controls() {
           </p>
         ) : null}
       </Row>
-      <Row label="Fade" value={`${settings.fade.toFixed(2)} s`}>
+      <Row label="Retract" value={`${settings.fade.toFixed(2)} s`}>
         <Slider
           min={0}
           max={3}
@@ -333,8 +333,8 @@ export function Controls() {
         />
         <p className="text-[0.68rem] leading-snug text-fg-subtle">
           {settings.shape === "jump"
-            ? "Explosion retract. 0 s snaps the blast off."
-            : "Retract from the outer edge back to the key. 0 s snaps off."}
+            ? "How long the boom shrinks back. 0 s snaps off."
+            : "From the outer edge back to the key. 0 s snaps off."}
         </p>
       </Row>
       <Row label="Echoes" value={String(settings.echoCount)}>
