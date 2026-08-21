@@ -72,6 +72,9 @@ private:
     QSlider*    brightness_   = nullptr;
     QSlider*    axis_jitter_  = nullptr;
     QSlider*    sweep_span_   = nullptr;
+    QSlider*    trail_length_ = nullptr;
+    QSlider*    blast_size_   = nullptr;
+    QComboBox*  blast_shape_box_ = nullptr;
     QLabel*     speed_val_    = nullptr;
     QLabel*     thickness_val_= nullptr;
     QLabel*     lifetime_val_ = nullptr;
@@ -82,6 +85,11 @@ private:
     QLabel*     jitter_val_   = nullptr;
     QLabel*     span_lbl_     = nullptr;
     QLabel*     span_val_     = nullptr;
+    QLabel*     trail_lbl_    = nullptr;
+    QLabel*     trail_val_    = nullptr;
+    QLabel*     blast_shape_lbl_ = nullptr;
+    QLabel*     blast_size_lbl_  = nullptr;
+    QLabel*     blast_size_val_  = nullptr;
     QCheckBox*  impact_box_   = nullptr;
     QCheckBox*  idle_box_     = nullptr;
     QLabel*     status_       = nullptr;
@@ -90,6 +98,11 @@ private:
     QWidget*    device_list_  = nullptr;
 
     uint32_t               seed_ = 1;
+    bool                   have_last_ = false;
+    float                  last_x_ = 0;
+    float                  last_y_ = 0;
+    double                 lastPressAt_ = 0;
+    bool                   pending_blast_ = false;
     bool                   suppress_ui_ = false;
     QTimer*                timer_ = nullptr;
     QTimer*                save_timer_ = nullptr;

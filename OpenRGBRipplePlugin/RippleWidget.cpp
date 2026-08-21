@@ -177,7 +177,7 @@ void RippleWidget::BuildUi()
 
     add_label("Shape");
     shape_box_ = new QComboBox();
-    shape_box_->addItems({"Circle", "Square", "Row/Col", "Sweep"});
+    shape_box_->addItems({"Circle", "Square", "Row/Col", "Sweep", "Dart"});
     connect(shape_box_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &RippleWidget::OnUiChanged);
     grid->addWidget(shape_box_, row, 1, 1, 2);
@@ -247,6 +247,34 @@ void RippleWidget::BuildUi()
     span_val_->setMinimumWidth(48);
     span_val_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     grid->addWidget(span_val_, row, 2);
+    row++;
+
+    trail_lbl_ = add_label("Trail");
+    trail_length_ = MakeSlider(0, 160, 25);
+    connect(trail_length_, &QSlider::valueChanged, this, &RippleWidget::OnUiChanged);
+    grid->addWidget(trail_length_, row, 1);
+    trail_val_ = new QLabel();
+    trail_val_->setMinimumWidth(48);
+    trail_val_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    grid->addWidget(trail_val_, row, 2);
+    row++;
+
+    blast_shape_lbl_ = add_label("Explosion");
+    blast_shape_box_ = new QComboBox();
+    blast_shape_box_->addItems({"Circle", "Square"});
+    connect(blast_shape_box_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &RippleWidget::OnUiChanged);
+    grid->addWidget(blast_shape_box_, row, 1, 1, 2);
+    row++;
+
+    blast_size_lbl_ = add_label("Blast size");
+    blast_size_ = MakeSlider(5, 120, 35);
+    connect(blast_size_, &QSlider::valueChanged, this, &RippleWidget::OnUiChanged);
+    grid->addWidget(blast_size_, row, 1);
+    blast_size_val_ = new QLabel();
+    blast_size_val_->setMinimumWidth(48);
+    blast_size_val_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    grid->addWidget(blast_size_val_, row, 2);
     row++;
 
     auto add_slider = [&](const char* name, QSlider*& slot, QLabel*& value,
@@ -355,6 +383,14 @@ void RippleWidget::UpdateSliderLabels()
     {
         span_val_->setText(QString::number(sweep_span_->value()) + "%");
     }
+    if(trail_val_ && trail_length_)
+    {
+        trail_val_->setText(QString::number(trail_length_->value() / 10.0, 'f', 1));
+    }
+    if(blast_size_val_ && blast_size_)
+    {
+        blast_size_val_->setText(QString::number(blast_size_->value() / 10.0, 'f', 1));
+    }
 }
 
 void RippleWidget::ShowShapeExtras()
@@ -363,12 +399,21 @@ void RippleWidget::ShowShapeExtras()
     const bool axis = shape == static_cast<int>(RippleShape::Axis)
                    || shape == static_cast<int>(RippleShape::Sweep);
     const bool sweep = shape == static_cast<int>(RippleShape::Sweep);
+    const bool jump = shape == static_cast<int>(RippleShape::Jump);
     if(jitter_lbl_) jitter_lbl_->setVisible(axis);
     if(axis_jitter_) axis_jitter_->setVisible(axis);
     if(jitter_val_) jitter_val_->setVisible(axis);
     if(span_lbl_) span_lbl_->setVisible(sweep);
     if(sweep_span_) sweep_span_->setVisible(sweep);
     if(span_val_) span_val_->setVisible(sweep);
+    if(trail_lbl_) trail_lbl_->setVisible(jump);
+    if(trail_length_) trail_length_->setVisible(jump);
+    if(trail_val_) trail_val_->setVisible(jump);
+    if(blast_shape_lbl_) blast_shape_lbl_->setVisible(jump);
+    if(blast_shape_box_) blast_shape_box_->setVisible(jump);
+    if(blast_size_lbl_) blast_size_lbl_->setVisible(jump);
+    if(blast_size_) blast_size_->setVisible(jump);
+    if(blast_size_val_) blast_size_val_->setVisible(jump);
 }
 
 void RippleWidget::SetColorButton(QPushButton* btn, const RippleRGB& c)
@@ -429,6 +474,20 @@ void RippleWidget::OnUiChanged()
     s.brightness = brightness_->value() / 100.0f;
     s.axis_jitter = axis_jitter_->value() / 100.0f;
     s.sweep_span  = sweep_span_->value() / 100.0f;
+    if(trail_length_)
+    {
+        s.trail_length = trail_length_->value() / 10.0f;
+    }
+    if(blast_size_)
+    {
+        s.blast_size = blast_size_->value() / 10.0f;
+    }
+    if(blast_shape_box_)
+    {
+        s.blast_shape = blast_shape_box_->currentIndex() == 1
+            ? RippleBlastShape::Square
+            : RippleBlastShape::Circle;
+    }
     s.impact_flash = impact_box_->isChecked();
     s.blend      = static_cast<RippleBlend>(blend_box_->currentIndex());
     s.paint_idle = !idle_box_ || !idle_box_->isChecked();
@@ -444,7 +503,7 @@ void RippleWidget::SyncUiFromSettings(const RippleSettings& s)
     brush_box_->setCurrentIndex(static_cast<int>(s.brush));
     {
         int si = static_cast<int>(s.shape);
-        if(si < 0 || si > 3) si = 0; /* Jump until Phase 4 */
+        if(si < 0 || si > 4) si = 0;
         shape_box_->setCurrentIndex(si);
     }
     color_box_->setCurrentIndex(s.color_mode == RippleColorMode::Solid ? 1
@@ -462,6 +521,19 @@ void RippleWidget::SyncUiFromSettings(const RippleSettings& s)
     if(sweep_span_)
     {
         sweep_span_->setValue(static_cast<int>(s.sweep_span * 100));
+    }
+    if(trail_length_)
+    {
+        trail_length_->setValue(static_cast<int>(s.trail_length * 10));
+    }
+    if(blast_size_)
+    {
+        blast_size_->setValue(static_cast<int>(s.blast_size * 10));
+    }
+    if(blast_shape_box_)
+    {
+        blast_shape_box_->setCurrentIndex(
+            s.blast_shape == RippleBlastShape::Square ? 1 : 0);
     }
     impact_box_->setChecked(s.impact_flash);
     if(idle_box_)
@@ -622,6 +694,22 @@ void RippleWidget::ConsumeKeys()
             return;
         }
 
+        const RippleSettings s = engine_.GetSettings();
+        const bool jump = s.shape == RippleShape::Jump;
+        auto spawn_at = [&](float x, float y)
+        {
+            pending_blast_ = jump;
+            if(jump)
+            {
+                engine_.DropBlasts();
+            }
+            engine_.Spawn(x, y, now, seed_++, bounds, have_last_, last_x_, last_y_);
+            last_x_ = x;
+            last_y_ = y;
+            lastPressAt_ = now;
+            have_last_ = true;
+        };
+
         for(const KeyEvent& ev : events)
         {
             const std::vector<std::string> names =
@@ -645,7 +733,7 @@ void RippleWidget::ConsumeKeys()
                 const std::string& led_name = led.controller->leds[led.led_index].name;
                 if(KeyMap::NameMatches(led_name, names))
                 {
-                    engine_.Spawn(led.x, led.y, now, seed_++, bounds);
+                    spawn_at(led.x, led.y);
                     spawned = true;
                     break;
                 }
@@ -657,7 +745,7 @@ void RippleWidget::ConsumeKeys()
                 {
                     if(led.controller && session_->DeviceSelected(led.controller))
                     {
-                        engine_.Spawn(led.x, led.y, now, seed_++, bounds);
+                        spawn_at(led.x, led.y);
                         break;
                     }
                 }
@@ -750,6 +838,20 @@ void RippleWidget::OnTick()
         return;
     }
     ConsumeKeys();
+    {
+        const RippleSettings s = engine_.GetSettings();
+        const double now = NowSeconds();
+        if(s.shape == RippleShape::Jump && pending_blast_ && have_last_
+           && now - lastPressAt_ >= static_cast<double>(s.lifetime))
+        {
+            Ripple lastDart;
+            const bool haveDart = engine_.LastNonBlast(lastDart);
+            engine_.KeepOnlyBlasts();
+            engine_.SpawnBlast(last_x_, last_y_, now, seed_++,
+                               haveDart ? &lastDart : nullptr);
+            pending_blast_ = false;
+        }
+    }
     Paint();
     if(!status_ || !hook_)
     {

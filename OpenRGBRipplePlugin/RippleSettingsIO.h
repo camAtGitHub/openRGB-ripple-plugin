@@ -53,11 +53,18 @@ static RippleSettings SettingsFromJson(const json& j, RippleSettings s)
     JsonGet(j, "paint_idle", s.paint_idle);
     JsonGet(j, "axis_jitter", s.axis_jitter);
     JsonGet(j, "sweep_span", s.sweep_span);
+    JsonGet(j, "trail_length", s.trail_length);
+    JsonGet(j, "blast_size", s.blast_size);
+    int blast_shape = static_cast<int>(s.blast_shape);
+    JsonGet(j, "blast_shape", blast_shape);
     if(brush >= 0 && brush <= 2) s.brush = static_cast<RippleBrush>(brush);
-    if(shape >= 0 && shape <= 3) s.shape = static_cast<RippleShape>(shape);
-    else if(shape == 4) s.shape = RippleShape::Circle; /* Jump until Phase 4 */
+    if(shape >= 0 && shape <= 4) s.shape = static_cast<RippleShape>(shape);
     if(color_mode >= 0 && color_mode <= 2) s.color_mode = static_cast<RippleColorMode>(color_mode);
     if(blend >= 0 && blend < RippleBlendCount) s.blend = static_cast<RippleBlend>(blend);
+    if(blast_shape == 0 || blast_shape == 1)
+    {
+        s.blast_shape = static_cast<RippleBlastShape>(blast_shape);
+    }
     return s;
 }
 
@@ -86,5 +93,8 @@ static json SettingsToJson(const RippleSettings& s)
     j["paint_idle"] = s.paint_idle;
     j["axis_jitter"] = s.axis_jitter;
     j["sweep_span"] = s.sweep_span;
+    j["trail_length"] = s.trail_length;
+    j["blast_size"] = s.blast_size;
+    j["blast_shape"] = static_cast<int>(s.blast_shape);
     return j;
 }

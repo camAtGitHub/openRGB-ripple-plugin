@@ -37,7 +37,13 @@ enum class RippleShape : int
     Square = 1,
     Axis   = 2,
     Sweep  = 3,
-    Jump   = 4, /* Phase 4; treat as Circle until then */
+    Jump   = 4, /* Dart */
+};
+
+enum class RippleBlastShape : int
+{
+    Circle = 0,
+    Square = 1,
 };
 
 enum class RippleAxis : int
@@ -102,6 +108,9 @@ struct RippleSettings
     RippleBlend     blend        = RippleBlend::Max;
     float           axis_jitter  = 0.18f;
     float           sweep_span   = 1.0f;
+    float           trail_length = 2.5f; /* Dart: keys lit behind the head. 0 = blob only. */
+    float           blast_size   = 3.5f; /* Dart: explosion radius in key-widths. */
+    RippleBlastShape blast_shape = RippleBlastShape::Circle;
     bool            enabled      = true;
     bool            paint_idle   = true; /* false = leave idle keys for Effects / shaders */
 };
@@ -119,6 +128,10 @@ struct Ripple
     float      expand  = 0;
     float      life    = 0;
     float      spanLat = 0;
+    float      tx      = 0; /* Dart landing (takeoff is x,y). */
+    float      ty      = 0;
+    bool       blast   = false;
+    RippleBlastShape blastShape = RippleBlastShape::Circle;
 };
 
 class RippleEngine
@@ -136,7 +149,9 @@ public:
         return settings_;
     }
 
-    void Spawn(float x, float y, double now, uint32_t seed, LayoutBounds bounds = LayoutBounds{})
+    /* Jump takeoff = has_from ? (from_x, from_y) : landing (x, y). */
+    void Spawn(float x, float y, double now, uint32_t seed, LayoutBounds bounds = LayoutBounds{},
+               bool has_from = false, float from_x = 0.0f, float from_y = 0.0f)
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if(!settings_.enabled)
@@ -147,6 +162,10 @@ public:
         RippleRGB color = ColorForPress(settings_, now, seed);
         float expand = settings_.lifetime;
         float spanLat = 0.0f;
+        float ox = x;
+        float oy = y;
+        float tx = x;
+        float ty = y;
         AxisHeading heading;
         heading.dir = 0;
         heading.travel = 0.0f;
@@ -162,20 +181,38 @@ public:
                 spanLat = 0.45f + span * full;
             }
         }
+        if(settings_.shape == RippleShape::Jump)
+        {
+            if(has_from)
+            {
+                ox = from_x;
+                oy = from_y;
+            }
+            tx = x;
+            ty = y;
+            const float dist = std::hypot(x - ox, y - oy);
+            const float flight = dist / std::max(0.1f, settings_.speed);
+            expand = flight + settings_.lifetime;
+        }
         const float life = expand + std::max(0.0f, settings_.fade);
+        const bool jump = settings_.shape == RippleShape::Jump;
+        const float travel = jump ? std::hypot(tx - ox, ty - oy) : heading.travel;
 
         Ripple base;
-        base.x       = x;
-        base.y       = y;
+        base.x       = ox;
+        base.y       = oy;
         base.t0      = now;
         base.color   = color;
         base.echo    = 0;
         base.axis    = heading.axis;
         base.dir     = heading.dir;
-        base.travel  = heading.travel;
+        base.travel  = travel;
         base.expand  = expand;
         base.life    = life;
         base.spanLat = spanLat;
+        base.tx      = tx;
+        base.ty      = ty;
+        base.blast   = false;
         ripples_.push_back(base);
 
         for(int i = 1; i <= settings_.echo_count; i++)
@@ -185,6 +222,86 @@ public:
             echo.echo = i;
             ripples_.push_back(echo);
         }
+    }
+
+    /* Colour the dart had at the landing — used for the explosion. */
+    static RippleRGB DartArrivalColor(const RippleSettings& s, const Ripple& dart)
+    {
+        if(s.color_mode == RippleColorMode::Rainbow)
+        {
+            return RainbowAtDistance(std::max(0.0f, dart.travel));
+        }
+        return dart.color;
+    }
+
+    /* When fromDart is set, do not pick a new random colour. */
+    void SpawnBlast(float x, float y, double now, uint32_t seed, const Ripple* fromDart = nullptr)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if(!settings_.enabled)
+        {
+            return;
+        }
+        const float size = std::max(0.4f, settings_.blast_size);
+        const float expand = std::max(0.08f, size / std::max(0.1f, settings_.speed));
+        Ripple b;
+        b.x          = x;
+        b.y          = y;
+        b.t0         = now;
+        b.color      = fromDart ? DartArrivalColor(settings_, *fromDart)
+                                : ColorForPress(settings_, now, seed);
+        b.echo       = 0;
+        b.travel     = size;
+        b.expand     = expand;
+        b.life       = expand + std::max(0.0f, settings_.fade);
+        b.blast      = true;
+        b.blastShape = settings_.blast_shape;
+        ripples_.push_back(b);
+    }
+
+    /* Jump fire: drop existing blasts, keep darts. */
+    void DropBlasts()
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        size_t w = 0;
+        for(size_t i = 0; i < ripples_.size(); i++)
+        {
+            if(!ripples_[i].blast)
+            {
+                ripples_[w++] = ripples_[i];
+            }
+        }
+        ripples_.resize(w);
+    }
+
+    /* Wipe darts so only live explosions remain. */
+    void KeepOnlyBlasts()
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        size_t w = 0;
+        for(size_t i = 0; i < ripples_.size(); i++)
+        {
+            if(ripples_[i].blast)
+            {
+                ripples_[w++] = ripples_[i];
+            }
+        }
+        ripples_.resize(w);
+    }
+
+    /* Last dart (newest non-blast). Copy — pointer into ripples_ would dangle. */
+    bool LastNonBlast(Ripple& out) const
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        for(size_t i = ripples_.size(); i-- > 0; )
+        {
+            if(!ripples_[i].blast)
+            {
+                out = ripples_[i];
+                return true;
+            }
+        }
+        return false;
     }
 
     /* Deterministic 0..1 from a press seed. Copy of studio u01 (imul hash). */
@@ -229,12 +346,15 @@ public:
     void Prune(double now)
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        const double life = settings_.lifetime
-                          + settings_.fade
-                          + settings_.echo_count * settings_.echo_delay;
+        const double fallback = settings_.lifetime
+                              + settings_.fade
+                              + settings_.echo_count * settings_.echo_delay;
         size_t w = 0;
         for(size_t i = 0; i < ripples_.size(); i++)
         {
+            const double life = ripples_[i].life > 0.0f
+                ? static_cast<double>(ripples_[i].life)
+                : fallback;
             if(now - ripples_[i].t0 <= life)
             {
                 ripples_[w++] = ripples_[i];
@@ -470,6 +590,51 @@ private:
         onWave = true;
     }
 
+    /* Euclidean projection along takeoff → landing. Same-key (len < 0.2)
+       lights only that key — a zero-length segment would paint the board. */
+    static void JumpCoverage(const RippleSettings& s, const Ripple& ripple,
+                             float x, float y, float elapsed,
+                             float& coverage, float& dist)
+    {
+        const float tx = ripple.tx;
+        const float ty = ripple.ty;
+        float len = ripple.travel;
+        if(len <= 0.0f)
+        {
+            len = std::hypot(tx - ripple.x, ty - ripple.y);
+        }
+        if(len < 0.2f)
+        {
+            const float d = std::hypot(x - tx, y - ty);
+            coverage = d <= 0.55f ? 1.0f : 0.0f;
+            dist = 0.0f;
+            return;
+        }
+        const float ux = (tx - ripple.x) / len;
+        const float uy = (ty - ripple.y) / len;
+        const float along = (x - ripple.x) * ux + (y - ripple.y) * uy;
+        const float lateral = std::fabs((x - ripple.x) * uy - (y - ripple.y) * ux);
+        const float flight = len / std::max(0.1f, s.speed);
+        const float head = elapsed < flight ? s.speed * elapsed : len;
+        const float half = std::max(0.45f, s.thickness * 0.4f);
+        if(lateral > half)
+        {
+            coverage = 0.0f;
+            dist = along;
+            return;
+        }
+        const float trail = std::max(0.0f, s.trail_length);
+        if(trail <= 0.02f)
+        {
+            coverage = std::fabs(along - head) <= 0.55f ? 1.0f : 0.0f;
+            dist = along;
+            return;
+        }
+        const bool onTrail = along <= head + 0.35f && along >= head - trail;
+        coverage = onTrail ? 1.0f : 0.0f;
+        dist = along;
+    }
+
     static float HardLightChannel(float s, float d)
     {
         return s < 0.5f ? 2.0f * s * d : 1.0f - 2.0f * (1.0f - s) * (1.0f - d);
@@ -507,11 +672,97 @@ private:
         float g = base.g;
         float b = base.b;
 
+        bool blasting = false;
+        for(const Ripple& rp : ripples_)
+        {
+            if(rp.blast && now - rp.t0 <= static_cast<double>(rp.life))
+            {
+                blasting = true;
+                break;
+            }
+        }
+
         for(const Ripple& ripple : ripples_)
         {
             const double elapsed = now - ripple.t0;
             if(elapsed < 0.0)
             {
+                continue;
+            }
+
+            if(ripple.blast)
+            {
+                const float expand = ripple.expand > 0.0f ? ripple.expand : 0.18f;
+                float radius = 0.0f;
+                if(!WaveRadius(settings_.speed, static_cast<float>(elapsed),
+                               expand, settings_.fade, radius, ripple.travel))
+                {
+                    continue;
+                }
+                const float dx = x - ripple.x;
+                const float dy = y - ripple.y;
+                const float dist = ripple.blastShape == RippleBlastShape::Square
+                    ? std::max(std::fabs(dx), std::fabs(dy))
+                    : std::sqrt(dx * dx + dy * dy);
+                float coverage = 0.0f;
+                if(settings_.brush == RippleBrush::Fill)
+                {
+                    coverage = dist <= radius ? 1.0f : 0.0f;
+                }
+                else if(settings_.brush == RippleBrush::Ring)
+                {
+                    const float band = std::fabs(dist - radius);
+                    const float t = band / std::max(0.05f, settings_.thickness);
+                    coverage = t >= 1.0f ? 0.0f : 1.0f - t * t;
+                }
+                else
+                {
+                    const float sigma = std::max(0.15f, settings_.thickness * 0.85f);
+                    const float d = dist - radius;
+                    coverage = std::exp(-(d * d) / (2.0f * sigma * sigma));
+                }
+                if(coverage <= 0.002f)
+                {
+                    continue;
+                }
+                const RippleRGB src = {
+                    ripple.color.r * settings_.brightness,
+                    ripple.color.g * settings_.brightness,
+                    ripple.color.b * settings_.brightness
+                };
+                const RippleRGB mixed = BlendLayer(src, {r, g, b}, coverage, settings_.blend);
+                r = mixed.r;
+                g = mixed.g;
+                b = mixed.b;
+                continue;
+            }
+
+            if(settings_.shape == RippleShape::Jump)
+            {
+                if(blasting)
+                {
+                    continue;
+                }
+                float coverage = 0.0f;
+                float dist = 0.0f;
+                JumpCoverage(settings_, ripple, x, y, static_cast<float>(elapsed),
+                             coverage, dist);
+                if(coverage <= 0.002f)
+                {
+                    continue;
+                }
+                const RippleRGB wave = settings_.color_mode == RippleColorMode::Rainbow
+                    ? RainbowAtDistance(std::max(0.0f, dist))
+                    : ripple.color;
+                const RippleRGB src = {
+                    wave.r * settings_.brightness,
+                    wave.g * settings_.brightness,
+                    wave.b * settings_.brightness
+                };
+                const RippleRGB mixed = BlendLayer(src, {r, g, b}, coverage, settings_.blend);
+                r = mixed.r;
+                g = mixed.g;
+                b = mixed.b;
                 continue;
             }
 

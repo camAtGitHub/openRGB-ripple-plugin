@@ -341,6 +341,161 @@ int main()
         }
     }
 
+    /* Phase 4: Dart + last-key blast. */
+    {
+        RippleEngine dart;
+        RippleSettings ds = dart.GetSettings();
+        ds.enabled = true;
+        ds.color_mode = RippleColorMode::Solid;
+        ds.solid = {255, 0, 0};
+        ds.idle = {0, 0, 0};
+        ds.brush = RippleBrush::Fill;
+        ds.shape = RippleShape::Jump;
+        ds.speed = 10;
+        ds.lifetime = 1;
+        ds.fade = 0;
+        ds.brightness = 1;
+        ds.echo_count = 0;
+        ds.impact_flash = false;
+        ds.blend = RippleBlend::Max;
+        ds.paint_idle = true;
+        ds.trail_length = 2.5f;
+        dart.SetSettings(ds);
+        dart.Spawn(0, 0, 0.0, 1); /* no from → same-key */
+        RippleRGB far = dart.Sample(10, 0, 0.01);
+        Expect(far.r < 1 && far.g < 1 && far.b < 1,
+               "same-key dart does not light a point 10 units away");
+        RippleRGB land = dart.Sample(0, 0, 0.01);
+        Expect(land.r > 200, "same-key dart lights landing key");
+        RippleRGB on = dart.Sample(0.55f, 0, 0.01);
+        Expect(on.r > 200, "same-key dart d<=0.55 is lit");
+    }
+
+    {
+        RippleEngine dart;
+        RippleSettings ds = dart.GetSettings();
+        ds.enabled = true;
+        ds.color_mode = RippleColorMode::Solid;
+        ds.solid = {255, 0, 0};
+        ds.idle = {0, 0, 0};
+        ds.brush = RippleBrush::Fill;
+        ds.shape = RippleShape::Jump;
+        ds.speed = 10;
+        ds.lifetime = 1;
+        ds.fade = 0;
+        ds.brightness = 1;
+        ds.echo_count = 0;
+        ds.impact_flash = false;
+        ds.blend = RippleBlend::Max;
+        ds.paint_idle = true;
+        ds.trail_length = 0.0f;
+        dart.SetSettings(ds);
+        dart.Spawn(10, 0, 0.0, 1, LayoutBounds{}, true, 0.0f, 0.0f);
+        const double mid = 0.5; /* head at 5 */
+        RippleRGB head = dart.Sample(5, 0, mid);
+        Expect(head.r > 200, "two-point dart mid-flight: head on");
+        RippleRGB ahead = dart.Sample(8, 0, mid);
+        Expect(ahead.r < 1 && ahead.g < 1 && ahead.b < 1,
+               "two-point dart mid-flight: ahead off");
+        RippleRGB behind = dart.Sample(3, 0, mid);
+        Expect(behind.r < 1 && behind.g < 1 && behind.b < 1,
+               "trail_length=0 behind head off");
+    }
+
+    {
+        RippleEngine dart;
+        RippleSettings ds = dart.GetSettings();
+        ds.enabled = true;
+        ds.color_mode = RippleColorMode::Random;
+        ds.idle = {0, 0, 0};
+        ds.brush = RippleBrush::Fill;
+        ds.shape = RippleShape::Jump;
+        ds.speed = 10;
+        ds.lifetime = 1;
+        ds.fade = 0;
+        ds.brightness = 1;
+        ds.echo_count = 0;
+        ds.impact_flash = false;
+        ds.blend = RippleBlend::Max;
+        ds.paint_idle = true;
+        dart.SetSettings(ds);
+        dart.Spawn(4, 0, 0.0, 7, LayoutBounds{}, true, 0.0f, 0.0f);
+        Ripple d;
+        Expect(dart.LastNonBlast(d), "spawned dart is LastNonBlast");
+        RippleRGB arrival = RippleEngine::DartArrivalColor(ds, d);
+        Expect(arrival.r == d.color.r && arrival.g == d.color.g && arrival.b == d.color.b,
+               "dartArrivalColor random uses dart.color");
+        dart.KeepOnlyBlasts();
+        dart.SpawnBlast(4, 0, 1.0, 99, &d);
+        RippleRGB blast = dart.Sample(4, 0, 1.0);
+        Expect(std::fabs(blast.r - d.color.r) < 1.5f
+            && std::fabs(blast.g - d.color.g) < 1.5f
+            && std::fabs(blast.b - d.color.b) < 1.5f,
+               "SpawnBlast fromDart uses dart.color, not a new seed");
+        const RippleRGB seeded = RippleEngine::ColorForPress(ds, 1.0, 99);
+        Expect(std::fabs(seeded.r - d.color.r) > 1.0f
+            || std::fabs(seeded.g - d.color.g) > 1.0f
+            || std::fabs(seeded.b - d.color.b) > 1.0f,
+               "seed 99 would have been a different random colour");
+    }
+
+    {
+        RippleEngine blast;
+        RippleSettings bs = blast.GetSettings();
+        bs.enabled = true;
+        bs.color_mode = RippleColorMode::Solid;
+        bs.solid = {255, 0, 0};
+        bs.idle = {0, 0, 0};
+        bs.brush = RippleBrush::Fill;
+        bs.shape = RippleShape::Jump;
+        bs.speed = 10;
+        bs.lifetime = 1;
+        bs.fade = 0;
+        bs.brightness = 1;
+        bs.echo_count = 0;
+        bs.impact_flash = false;
+        bs.blend = RippleBlend::Max;
+        bs.paint_idle = true;
+        bs.blast_size = 3.5f;
+        blast.SetSettings(bs);
+        blast.SpawnBlast(0, 0, 0.0, 1);
+        /* expand = max(0.08, 3.5/10) = 0.35; fade 0 → snap after expand */
+        RippleRGB live = blast.Sample(0, 0, 0.1);
+        Expect(live.r > 200, "blast lights landing while expanding");
+        RippleRGB after = blast.Sample(0, 0, 0.36);
+        Expect(after.r < 1 && after.g < 1 && after.b < 1,
+               "after blast life elapsed, landing is idle");
+    }
+
+    {
+        RippleEngine dart;
+        RippleSettings ds = dart.GetSettings();
+        ds.enabled = true;
+        ds.color_mode = RippleColorMode::Solid;
+        ds.solid = {255, 0, 0};
+        ds.idle = {0, 0, 0};
+        ds.brush = RippleBrush::Fill;
+        ds.shape = RippleShape::Jump;
+        ds.speed = 10;
+        ds.lifetime = 1;
+        ds.fade = 0;
+        ds.brightness = 1;
+        ds.echo_count = 0;
+        ds.impact_flash = false;
+        ds.blend = RippleBlend::Max;
+        ds.paint_idle = true;
+        ds.trail_length = 0.0f;
+        ds.blast_size = 3.5f;
+        dart.SetSettings(ds);
+        dart.Spawn(10, 0, 0.0, 1, LayoutBounds{}, true, 0.0f, 0.0f);
+        RippleRGB head = dart.Sample(5, 0, 0.5);
+        Expect(head.r > 200, "pre-blast dart head is on");
+        dart.SpawnBlast(10, 0, 0.5, 2);
+        RippleRGB skipped = dart.Sample(5, 0, 0.5);
+        Expect(skipped.r < 1 && skipped.g < 1 && skipped.b < 1,
+               "live blast skips dart sample");
+    }
+
     if(g_fails)
     {
         std::fprintf(stderr, "%d failed\n", g_fails);
