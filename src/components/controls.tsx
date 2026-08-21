@@ -314,7 +314,8 @@ export function Controls() {
         />
         {settings.shape === "sweep" || settings.shape === "axis" ? (
           <p className="text-[0.68rem] leading-snug text-fg-subtle">
-            Time for the bar to reach the far edge. Fade is extra, after that.
+            Max expand time. Speed is how fast it travels — it may finish
+            sooner, then Fade retracts.
           </p>
         ) : settings.shape === "jump" ? (
           <p className="text-[0.68rem] leading-snug text-fg-subtle">

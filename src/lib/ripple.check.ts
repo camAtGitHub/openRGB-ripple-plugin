@@ -82,10 +82,31 @@ function fillSettings(shape: RippleSettings["shape"]): RippleSettings {
   const retract = waveRadius(10, 2.5, 1, 3);
   expect(retract != null && almost(retract, 5), "waveRadius(10, 2.5, 1, 3) → 5");
   expect(waveRadius(10, 1.01, 1, 0) === null, "waveRadius(10, 1.01, 1, 0) → null");
-  const directed = waveRadius(14, 0.35, 0.35, 0, 14);
+  /* Sweep / Row-Col: speed is travel rate; lifetime caps expand. */
   expect(
-    directed != null && almost(directed, 14),
-    "waveRadius(14, 0.35, 0.35, 0, 14) → 14",
+    almost(waveRadius(14, 0.35, 1.15, 0, 20) ?? -1, 4.9),
+    "directed uses speed, not lifetime-stretched crossing",
+  );
+  expect(
+    waveRadius(14, 0.5, 1.15, 0, 5) === null,
+    "directed fade 0 snaps off after hitting travel (max, not guaranteed)",
+  );
+  expect(
+    almost(waveRadius(14, 0.3, 1.15, 0, 5) ?? -1, 4.2),
+    "directed still expanding at speed before travel",
+  );
+  expect(
+    waveRadius(10, 0.5, 0.4, 0, 20) === null,
+    "lifetime caps expand before travel is reached",
+  );
+  expect(
+    almost(waveRadius(10, 0.3, 0.4, 0, 20) ?? -1, 3),
+    "lifetime cap: still expanding at speed",
+  );
+  const fromEdge = waveRadius(10, 1.0, 3, 2, 5);
+  expect(
+    fromEdge != null && almost(fromEdge, 3.75),
+    "retract starts at travel, not at speed*lifetime",
   );
 }
 

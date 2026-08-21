@@ -27,7 +27,7 @@ static void PrintHelp()
         "  --solid <RRGGBB>     hex color when --color solid\n"
         "  --speed <n>          wave speed, keys/sec      (default 14)\n"
         "  --thickness <n>      ring width                (default 1.15)\n"
-        "  --lifetime <n>       expand seconds, min 0.05  (default 1.15)\n"
+        "  --lifetime <n>       max expand seconds, min 0.05 (default 1.15)\n"
         "  --fade <n>           seconds to retract; 0 = snap off (default 1.0)\n"
         "  --echoes <n>         extra rings               (default 1)\n"
         "  --echo-delay <n>     seconds between echoes    (default 0.12)\n"

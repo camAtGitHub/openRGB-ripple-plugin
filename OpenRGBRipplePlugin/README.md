@@ -48,7 +48,7 @@ If the script built the DLL but did not copy it:
 | Disable background | Leave unused keys alone for another effect |
 | Speed | Wave speed, keys/sec |
 | Thickness | Ring width |
-| Lifetime | Expand seconds (min 0.05). Dart: idle boom waits this long from the last keydown |
+| Lifetime | Max expand seconds (min 0.05). Sweep / Row-Col travel at Speed and may finish sooner. Dart: idle boom waits this long from the last keydown |
 | Fade | Seconds to retract the front to the origin; 0 = snap off |
 | Echoes, brightness | Extra rings and overall brightness |
 | Jitter | Row/Col + Sweep: chance the wave takes the short way |

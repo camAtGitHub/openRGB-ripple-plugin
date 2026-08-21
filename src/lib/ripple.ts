@@ -433,9 +433,10 @@ export function blendLayer(
 }
 
 /**
- * Expand for `expand` seconds, then retract to the origin over `fade` seconds.
- * Sweep / row-col pass `maxRadius` (remaining travel) so the outward trip
- * always lasts exactly `expand` seconds — not distance/speed (~1s on J).
+ * Expand at `speed` for up to `expand` seconds, then retract over `fade`.
+ * `maxRadius` (Sweep / Row-Col remaining travel, blast size) caps how far
+ * the front goes: lifetime is a maximum, not a guaranteed crossing time.
+ * Hitting the cap or the far edge starts fade immediately (no hold).
  */
 export function waveRadius(
   speed: number,
@@ -446,12 +447,13 @@ export function waveRadius(
 ): number | null {
   if (elapsed < 0) return null;
   const expandT = Math.max(expand, 1e-6);
-  const directed = maxRadius != null && maxRadius > 0;
-  const peak = directed ? maxRadius : speed * expandT;
-  const outSpeed = peak / expandT;
-  if (elapsed <= expand) return outSpeed * elapsed;
+  const speedT = Math.max(speed, 1e-6);
+  let peak = speedT * expandT;
+  if (maxRadius != null && maxRadius > 0) peak = Math.min(peak, maxRadius);
+  const outward = peak / speedT;
+  if (elapsed <= outward) return speedT * elapsed;
   if (fade <= 1e-4) return null;
-  const u = (elapsed - expand) / fade;
+  const u = (elapsed - outward) / fade;
   if (u >= 1) return null;
   return peak * (1 - u);
 }

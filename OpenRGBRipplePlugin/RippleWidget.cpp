@@ -138,7 +138,7 @@ void RippleWidget::BuildUi()
     root->setContentsMargins(16, 16, 16, 16);
     root->setSpacing(12);
 
-    auto* title = new QLabel("Ripple 1.0.7");
+    auto* title = new QLabel("Ripple 1.0.8");
     QFont f = title->font();
     f.setPointSize(16);
     f.setBold(true);
@@ -293,6 +293,9 @@ void RippleWidget::BuildUi()
     add_slider("Speed", speed_, speed_val_, 40, 280, 140);
     add_slider("Thickness", thickness_, thickness_val_, 35, 300, 115);
     add_slider("Lifetime", lifetime_, lifetime_val_, 5, 280, 115);
+    lifetime_->setToolTip(
+        "Max expand time. Sweep / Row-Col travel at Speed and may finish sooner. "
+        "Dart: idle after the last key before the boom.");
     add_slider("Fade", fade_, fade_val_, 0, 300, 100);
     add_slider("Echoes", echoes_, echoes_val_, 0, 4, 1);
     add_slider("Brightness", brightness_, brightness_val_, 15, 100, 100);

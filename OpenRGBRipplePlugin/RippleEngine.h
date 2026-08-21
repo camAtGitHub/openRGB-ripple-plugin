@@ -387,9 +387,10 @@ public:
         ripples_.clear();
     }
 
-    /* Expand for `expand` seconds, then retract to origin over `fade` seconds.
-       fade <= 1e-4 → false (snap off). peak = maxRadius if directed else speed * expandT.
-       After expand: u = (elapsed - expand) / fade; radius = peak * (1 - u). */
+    /* Expand at speed for up to `expand` seconds, then retract over fade.
+       maxRadius (Sweep / Row-Col travel, blast size) caps the front: lifetime
+       is a maximum, not a guaranteed crossing time. Hitting the cap or the
+       far edge starts fade immediately (no hold). fade <= 1e-4 → snap off. */
     static bool WaveRadius(float speed, float elapsed, float expand, float fade,
                            float& radius, float maxRadius = 0.0f)
     {
@@ -398,19 +399,23 @@ public:
             return false;
         }
         const float expandT = std::max(expand, 1e-6f);
-        const bool directed = maxRadius > 0.0f;
-        const float peak = directed ? maxRadius : speed * expandT;
-        const float outSpeed = peak / expandT;
-        if(elapsed <= expand)
+        const float speedT = std::max(speed, 1e-6f);
+        float peak = speedT * expandT;
+        if(maxRadius > 0.0f)
         {
-            radius = outSpeed * elapsed;
+            peak = std::min(peak, maxRadius);
+        }
+        const float outward = peak / speedT;
+        if(elapsed <= outward)
+        {
+            radius = speedT * elapsed;
             return true;
         }
         if(fade <= 1e-4f)
         {
             return false;
         }
-        const float u = (elapsed - expand) / fade;
+        const float u = (elapsed - outward) / fade;
         if(u >= 1.0f)
         {
             return false;

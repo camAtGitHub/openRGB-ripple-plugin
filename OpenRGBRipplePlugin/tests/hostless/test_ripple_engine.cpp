@@ -269,9 +269,19 @@ int main()
 
     {
         float r = 0.0f;
-        const bool ok = RippleEngine::WaveRadius(14.0f, 0.35f, 0.35f, 0.0f, r, 14.0f);
-        Expect(ok && std::fabs(r - 14.0f) < 1e-4f,
-               "directed waveRadius lifetime 0.35 travel 14 -> radius 14");
+        Expect(RippleEngine::WaveRadius(14.0f, 0.35f, 1.15f, 0.0f, r, 20.0f)
+               && std::fabs(r - 4.9f) < 1e-4f,
+               "directed uses speed, not lifetime-stretched crossing");
+        Expect(!RippleEngine::WaveRadius(14.0f, 0.5f, 1.15f, 0.0f, r, 5.0f),
+               "directed fade 0 snaps off after hitting travel");
+        Expect(RippleEngine::WaveRadius(14.0f, 0.3f, 1.15f, 0.0f, r, 5.0f)
+               && std::fabs(r - 4.2f) < 1e-4f,
+               "directed still expanding at speed before travel");
+        Expect(!RippleEngine::WaveRadius(10.0f, 0.5f, 0.4f, 0.0f, r, 20.0f),
+               "lifetime caps expand before travel is reached");
+        Expect(RippleEngine::WaveRadius(10.0f, 1.0f, 3.0f, 2.0f, r, 5.0f)
+               && std::fabs(r - 3.75f) < 1e-4f,
+               "retract starts at travel, not at speed*lifetime");
     }
 
     /* jitter 0 from np0: only left (h dir -1) or up (v dir -1). */
@@ -316,8 +326,9 @@ int main()
         as.blend = RippleBlend::Max;
         as.paint_idle = true;
         ax.SetSettings(as);
-        /* t=0.8 so up travel/2=2.75 would miss (ny-3); late expand lights long-way. */
-        const double t = 0.8;
+        /* t=0.4: speed 10 so both long-ways are still expanding (up travel 5.5
+           would already have snapped off at t=0.8 with fade 0). */
+        const double t = 0.4;
         for(uint32_t seed = 1; seed <= 64; seed++)
         {
             ax.Clear();
