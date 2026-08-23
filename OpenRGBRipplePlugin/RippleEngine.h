@@ -339,7 +339,9 @@ public:
         AxisHeading h;
         h.axis   = axis;
         h.dir    = takeShort ? shortDir : longDir;
-        h.travel = takeShort ? sh : lng;
+        /* Far-edge key sits at dist==remaining. fade 0 snaps that instant,
+           so a 16 ms tick never paints the last row (F-row lost). */
+        h.travel = (takeShort ? sh : lng) + 1.0f;
         return h;
     }
 
@@ -732,10 +734,13 @@ private:
                 {
                     continue;
                 }
+                const RippleRGB wave = settings_.color_mode == RippleColorMode::Rainbow
+                    ? RainbowAtDistance(dist)
+                    : ripple.color;
                 const RippleRGB src = {
-                    ripple.color.r * settings_.brightness,
-                    ripple.color.g * settings_.brightness,
-                    ripple.color.b * settings_.brightness
+                    wave.r * settings_.brightness,
+                    wave.g * settings_.brightness,
+                    wave.b * settings_.brightness
                 };
                 const RippleRGB mixed = BlendLayer(src, {r, g, b}, coverage, settings_.blend);
                 r = mixed.r;

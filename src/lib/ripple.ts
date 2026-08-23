@@ -181,9 +181,11 @@ export function pickAxisDirection(
     const short = aLong ? b : a;
     const longDir = aLong ? dirA : dirB;
     const shortDir = aLong ? dirB : dirA;
+    /* Far-edge key sits at dist==remaining. fade 0 snaps that instant,
+       so a 16ms tick never paints the last row (F-row lost). */
     return takeShort
-      ? { dir: shortDir, travel: short }
-      : { dir: longDir, travel: long };
+      ? { dir: shortDir, travel: short + 1 }
+      : { dir: longDir, travel: long + 1 };
   };
 
   if (axis === "h") {
@@ -577,10 +579,14 @@ export function sampleRipples(
             : 0
           : brushCoverage(settings.brush, dist, radius, settings.thickness);
       if (coverage <= 0.002) continue;
+      const wave =
+        settings.colorMode === "rainbow"
+          ? rainbowAtDistance(dist)
+          : ripple.color;
       const src = {
-        r: ripple.color.r * settings.brightness,
-        g: ripple.color.g * settings.brightness,
-        b: ripple.color.b * settings.brightness,
+        r: wave.r * settings.brightness,
+        g: wave.g * settings.brightness,
+        b: wave.b * settings.brightness,
       };
       const mixed = blendLayer(src, { r, g, b }, coverage, settings.blend);
       r = mixed.r;
