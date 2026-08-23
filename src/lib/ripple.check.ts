@@ -6,6 +6,7 @@ import {
   pickAxisDirection,
   rainbowAtDistance,
   sampleRipples,
+  spawnBlast,
   spawnRipples,
   waveRadius,
   type RGB,
@@ -173,6 +174,37 @@ function fillSettings(shape: RippleSettings["shape"]): RippleSettings {
 }
 
 {
+  /* Integer LED coords (plugin matrix): far-edge row sits at dist==travel.
+     fade 0 snaps that same instant, so 16ms ticks never paint F-row. */
+  const bounds = { minX: 0, maxX: 21, minY: 0, maxY: 5 };
+  const settings: RippleSettings = {
+    ...fillSettings("sweep"),
+    speed: 21,
+    lifetime: 1.33,
+    fade: 0,
+    axisJitter: 0.02,
+    sweepSpan: 1,
+    thickness: 2.5,
+  };
+  let seed = 0;
+  for (let s = 1; s <= 64; s++) {
+    const h = pickAxisDirection(4, 4, bounds, s, 0.02);
+    if (h.axis === "v" && h.dir < 0) {
+      seed = s;
+      break;
+    }
+  }
+  expect(seed > 0, "found an up sweep seed from C");
+  const ripples = spawnRipples(settings, 4, 4, 0, seed, bounds);
+  let fRow = false;
+  for (let t = 0; t <= 0.4; t += 0.016) {
+    const c = sampleRipples(settings, ripples, 4, 0, t);
+    if (c.r > 200) fRow = true;
+  }
+  expect(fRow, "sweep up from C lights F-row (y=0) on a 16ms tick, not only the number row");
+}
+
+{
   const settings: RippleSettings = {
     ...DEFAULT_SETTINGS,
     shape: "jump",
@@ -187,6 +219,33 @@ function fillSettings(shape: RippleSettings["shape"]): RippleSettings {
       arrival.g === dart.color.g &&
       arrival.b === dart.color.b,
     "dartArrivalColor random uses dart.color",
+  );
+}
+
+{
+  const settings: RippleSettings = {
+    ...fillSettings("jump"),
+    colorMode: "rainbow",
+    blastSize: 12,
+  };
+  const dart = {
+    x: 0,
+    y: 0,
+    t0: 0,
+    color: rainbowAtDistance(4),
+    echo: 0,
+    travel: 4,
+  };
+  const blast = spawnBlast(settings, 0, 0, 0, 1, dart);
+  const at0 = sampleRipples(settings, [blast], 0, 0, 0.5);
+  const at4 = sampleRipples(settings, [blast], 4, 0, 0.5);
+  expect(
+    at0.r > 200 && at0.r > at0.g,
+    "rainbow blast at origin is red-ish, not the dart's cyan arrival",
+  );
+  expect(
+    at4.g > 200 && at4.b > 200 && at4.r < 80,
+    "rainbow blast at dist 4 is cyan-ish",
   );
 }
 

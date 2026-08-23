@@ -352,6 +352,52 @@ int main()
         }
     }
 
+    /* Integer LED coords: far-edge row is at dist==travel. fade 0 snaps
+       that same instant, so 16 ms ticks never paint F-row. */
+    {
+        LayoutBounds b;
+        b.minX = 0; b.maxX = 21; b.minY = 0; b.maxY = 5;
+        RippleEngine sw;
+        RippleSettings ss = sw.GetSettings();
+        ss.enabled = true;
+        ss.color_mode = RippleColorMode::Solid;
+        ss.solid = {255, 0, 0};
+        ss.idle = {0, 0, 0};
+        ss.brush = RippleBrush::Fill;
+        ss.shape = RippleShape::Sweep;
+        ss.speed = 21;
+        ss.lifetime = 1.33f;
+        ss.fade = 0;
+        ss.thickness = 2.5f;
+        ss.brightness = 1;
+        ss.echo_count = 0;
+        ss.impact_flash = false;
+        ss.blend = RippleBlend::Max;
+        ss.paint_idle = true;
+        ss.axis_jitter = 0.02f;
+        ss.sweep_span = 1.0f;
+        sw.SetSettings(ss);
+        uint32_t seed = 0;
+        for(uint32_t s = 1; s <= 64; s++)
+        {
+            AxisHeading h = RippleEngine::PickAxisDirection(4, 4, b, s, 0.02f);
+            if(h.axis == RippleAxis::Vertical && h.dir < 0)
+            {
+                seed = s;
+                break;
+            }
+        }
+        Expect(seed > 0, "found an up sweep seed from C");
+        sw.Spawn(4, 4, 0.0, seed, b);
+        bool f_row = false;
+        for(double t = 0.0; t <= 0.4; t += 0.016)
+        {
+            RippleRGB c = sw.Sample(4, 0, t);
+            if(c.r > 200) f_row = true;
+        }
+        Expect(f_row, "sweep up from C lights F-row (y=0) on a 16ms tick, not only the number row");
+    }
+
     /* Phase 4: Dart + last-key blast. */
     {
         RippleEngine dart;
@@ -448,6 +494,38 @@ int main()
             || std::fabs(seeded.g - d.color.g) > 1.0f
             || std::fabs(seeded.b - d.color.b) > 1.0f,
                "seed 99 would have been a different random colour");
+    }
+
+    /* Rainbow blast is spatial, like any other rainbow fill — not one
+       arrival hue baked in when random-from-dart was fixed. */
+    {
+        RippleEngine blast;
+        RippleSettings bs = blast.GetSettings();
+        bs.enabled = true;
+        bs.color_mode = RippleColorMode::Rainbow;
+        bs.idle = {0, 0, 0};
+        bs.brush = RippleBrush::Fill;
+        bs.shape = RippleShape::Jump;
+        bs.speed = 10;
+        bs.lifetime = 1;
+        bs.fade = 0;
+        bs.brightness = 1;
+        bs.echo_count = 0;
+        bs.impact_flash = false;
+        bs.blend = RippleBlend::Max;
+        bs.paint_idle = true;
+        bs.blast_size = 12;
+        blast.SetSettings(bs);
+        Ripple dart;
+        dart.travel = 4.0f;
+        dart.color = RippleEngine::RainbowAtDistance(4.0f);
+        blast.SpawnBlast(0, 0, 0.0, 1, &dart);
+        RippleRGB at0 = blast.Sample(0, 0, 0.5);
+        RippleRGB at4 = blast.Sample(4, 0, 0.5);
+        Expect(at0.r > 200 && at0.r > at0.g,
+               "rainbow blast at origin is red-ish, not the dart's cyan arrival");
+        Expect(at4.g > 200 && at4.b > 200 && at4.r < 80,
+               "rainbow blast at dist 4 is cyan-ish");
     }
 
     {
