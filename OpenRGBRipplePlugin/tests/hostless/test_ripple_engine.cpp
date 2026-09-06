@@ -102,8 +102,95 @@ int main()
         ring.SetSettings(rs);
         ring.Spawn(0, 0, 0.0, 1);
         RippleRGB off = ring.Sample(1, 0, 2.0);
-        Expect(off.r > 180, "ring 1 unit off crest still mostly red");
-        Expect(off.b < 50, "ring 1 unit off crest is not washed with idle");
+        Expect(off.r > 250, "ring 1 unit off crest still mostly red");
+        Expect(off.b < 10, "ring 1 unit off crest is not washed with idle");
+    }
+
+    /* Ring occupancy snap: in-band is fully on, else idle. Thickness still
+       sets the band (t = |dist-radius|/thickness; t>=1 stays 0). */
+    {
+        RippleEngine ring;
+        RippleSettings rs = ring.GetSettings();
+        rs.enabled = true;
+        rs.color_mode = RippleColorMode::Solid;
+        rs.solid = {255, 0, 0};
+        rs.idle = {0, 255, 255};
+        rs.brush = RippleBrush::Ring;
+        rs.speed = 10;
+        rs.lifetime = 1;
+        rs.thickness = 1.15f;
+        rs.fade = 0;
+        rs.brightness = 1;
+        rs.echo_count = 0;
+        rs.impact_flash = false;
+        rs.blend = RippleBlend::Max;
+        rs.paint_idle = true;
+        ring.SetSettings(rs);
+        ring.Spawn(0, 0, 0.0, 1);
+        RippleRGB crest = ring.Sample(5, 0, 0.5);
+        Expect(crest.r >= 250 && crest.g <= 5 && crest.b <= 5,
+               "ring occupancy crest is full red");
+        RippleRGB inband = ring.Sample(5.8f, 0, 0.5);
+        Expect(inband.r >= 250 && inband.g <= 5 && inband.b <= 5,
+               "ring occupancy in-band is full red, not grey mix");
+        RippleRGB out = ring.Sample(6.3f, 0, 0.5);
+        Expect(out.r <= 5 && out.g >= 250 && out.b >= 250,
+               "ring occupancy outside band is idle cyan");
+    }
+
+    /* Complementary Ring blends after occupancy snap. Over/Max is the
+       occupancy block above. Sample through spawn+sample, not BlendLayer(1). */
+    {
+        struct Case
+        {
+            RippleBlend blend;
+            bool want_white;
+            bool want_black;
+            bool want_red;
+            const char* on_msg;
+            const char* off_msg;
+        };
+        const Case cases[] = {
+            {RippleBlend::Add, true, false, false,
+             "ring occupancy add on-band is white",
+             "ring occupancy add off-band is idle cyan"},
+            {RippleBlend::ColorBurn, false, true, false,
+             "ring occupancy burn on-band is black",
+             "ring occupancy burn off-band is idle cyan"},
+            {RippleBlend::Overlay, false, false, true,
+             "ring occupancy overlay on-band is red",
+             "ring occupancy overlay off-band is idle cyan"},
+        };
+        for(const Case& c : cases)
+        {
+            RippleEngine ring;
+            RippleSettings rs = ring.GetSettings();
+            rs.enabled = true;
+            rs.color_mode = RippleColorMode::Solid;
+            rs.solid = {255, 0, 0};
+            rs.idle = {0, 255, 255};
+            rs.brush = RippleBrush::Ring;
+            rs.speed = 10;
+            rs.lifetime = 1;
+            rs.thickness = 1.15f;
+            rs.fade = 0;
+            rs.brightness = 1;
+            rs.echo_count = 0;
+            rs.impact_flash = false;
+            rs.blend = c.blend;
+            rs.paint_idle = true;
+            ring.SetSettings(rs);
+            ring.Spawn(0, 0, 0.0, 1);
+            RippleRGB on = ring.Sample(5, 0, 0.5);
+            if(c.want_white)
+                Expect(on.r >= 250 && on.g >= 250 && on.b >= 250, c.on_msg);
+            else if(c.want_black)
+                Expect(on.r <= 5 && on.g <= 5 && on.b <= 5, c.on_msg);
+            else
+                Expect(on.r >= 250 && on.g <= 5 && on.b <= 5, c.on_msg);
+            RippleRGB off = ring.Sample(6.3f, 0, 0.5);
+            Expect(off.r <= 5 && off.g >= 250 && off.b >= 250, c.off_msg);
+        }
     }
 
     {
@@ -284,6 +371,82 @@ int main()
                "retract starts at travel, not at speed*lifetime");
     }
 
+    {
+        RippleSettings ds;
+        ds.shape = RippleShape::Axis;
+        ds.speed = 10;
+        ds.lifetime = 1;
+        ds.fade = 0;
+        ds.brush = RippleBrush::Fill;
+        ds.color_mode = RippleColorMode::Solid;
+        ds.solid = {255, 0, 0};
+        ds.idle = {0, 0, 0};
+        ds.brightness = 1;
+        ds.echo_count = 0;
+        ds.impact_flash = false;
+        ds.blend = RippleBlend::Max;
+        ds.paint_idle = true;
+        ds.enabled = true;
+        Ripple vr;
+        vr.x = 10;
+        vr.y = 3;
+        vr.axis = RippleAxis::Vertical;
+        vr.dir = -1;
+        vr.travel = 20;
+        vr.expand = 1;
+        vr.life = 1;
+        vr.color = ds.solid;
+        Ripple hr = vr;
+        hr.axis = RippleAxis::Horizontal;
+        hr.dir = 1;
+        Expect(std::fabs(RippleEngine::AxisVerticalSpeed - 0.7f) < 1e-4f,
+               "vertical axis speed factor is 0.7");
+        Expect(std::fabs(RippleEngine::DirectedSpeed(ds, vr) - 7.0f) < 1e-4f,
+               "row/col vertical speed is 0.7x");
+        Expect(std::fabs(RippleEngine::DirectedSpeed(ds, hr) - 10.0f) < 1e-4f,
+               "row/col horizontal speed is unchanged");
+        RippleSettings circle = ds;
+        circle.shape = RippleShape::Circle;
+        Expect(std::fabs(RippleEngine::DirectedSpeed(circle, vr) - 10.0f) < 1e-4f,
+               "circle ignores axis speed factor");
+
+        RippleEngine ax;
+        ax.SetSettings(ds);
+        /* Can't inject a Ripple; spawn a known vertical heading. */
+        LayoutBounds b;
+        uint32_t vseed = 0;
+        uint32_t hseed = 0;
+        for(uint32_t s = 1; s <= 64; s++)
+        {
+            AxisHeading h = RippleEngine::PickAxisDirection(10, 3, b, s, 0.0f);
+            if(h.axis == RippleAxis::Vertical && h.dir < 0 && vseed == 0) vseed = s;
+            if(h.axis == RippleAxis::Horizontal && h.dir > 0 && hseed == 0) hseed = s;
+        }
+        Expect(vseed > 0 && hseed > 0, "found vertical and horizontal axis seeds");
+        ax.Clear();
+        ax.Spawn(10, 3, 0.0, hseed, b);
+        RippleRGB hon = ax.Sample(13, 3, 0.4);
+        Expect(hon.r > 200, "row/col horizontal dist 3 still at full speed");
+        ax.Clear();
+        ax.Spawn(10, 3, 0.0, vseed, b);
+        RippleRGB von = ax.Sample(10, 1.2f, 0.4);
+        RippleRGB voff = ax.Sample(10, 0, 0.4);
+        Expect(von.r > 200, "row/col vertical 0.7x still covers dist 1.8");
+        Expect(voff.r < 1 && voff.g < 1 && voff.b < 1,
+               "row/col vertical dist 3 not yet reached at 0.7x");
+
+        ds.shape = RippleShape::Sweep;
+        ds.sweep_span = 1;
+        Expect(std::fabs(RippleEngine::DirectedSpeed(ds, vr) - 7.0f) < 1e-4f,
+               "sweep vertical speed is 0.7x");
+        ax.SetSettings(ds);
+        ax.Clear();
+        ax.Spawn(10, 3, 0.0, vseed, b);
+        RippleRGB soff = ax.Sample(10, 0, 0.4);
+        Expect(soff.r < 1 && soff.g < 1 && soff.b < 1,
+               "sweep vertical dist 3 not yet reached at 0.7x");
+    }
+
     /* jitter 0 from np0: only left (h dir -1) or up (v dir -1). */
     {
         LayoutBounds b; /* 0, 22.6, 0, 6 */
@@ -327,7 +490,8 @@ int main()
         as.paint_idle = true;
         ax.SetSettings(as);
         /* t=0.4: speed 10 so both long-ways are still expanding (up travel 5.5
-           would already have snapped off at t=0.8 with fade 0). */
+           would already have snapped off at t=0.8 with fade 0). Vertical runs
+           at 0.7x so sample up closer (dist 2 < radius 2.8). */
         const double t = 0.4;
         for(uint32_t seed = 1; seed <= 64; seed++)
         {
@@ -336,7 +500,7 @@ int main()
             RippleRGB right = ax.Sample(nx + 2.0f, ny, t);
             RippleRGB down  = ax.Sample(nx, ny + 0.6f, t);
             RippleRGB left  = ax.Sample(nx - 3.0f, ny, t);
-            RippleRGB up    = ax.Sample(nx, ny - 3.0f, t);
+            RippleRGB up    = ax.Sample(nx, ny - 2.0f, t);
             char rmsg[96];
             std::snprintf(rmsg, sizeof(rmsg),
                           "np0 jitter 0 seed %u short-way right idle", seed);
@@ -496,6 +660,23 @@ int main()
                "seed 99 would have been a different random colour");
     }
 
+    {
+        const RippleRGB origin = RippleEngine::RainbowAtDistance(0.0f);
+        Expect(origin.r >= 254.0f && origin.g <= 1.0f && origin.b <= 1.0f,
+               "RainbowAtDistance(0) true red");
+        const RippleRGB origin_band = RippleEngine::RainbowAtDistance(0.9f);
+        Expect(origin_band.r == origin.r && origin_band.g == origin.g
+            && origin_band.b == origin.b,
+               "RainbowAtDistance(0.9) equals RainbowAtDistance(0)");
+        const RippleRGB cyan = RippleEngine::RainbowAtDistance(4.0f);
+        Expect(cyan.r <= 1.0f && cyan.g >= 254.0f && cyan.b >= 254.0f,
+               "RainbowAtDistance(4) true cyan");
+        const RippleRGB cyan_band = RippleEngine::RainbowAtDistance(4.9f);
+        Expect(cyan_band.r == cyan.r && cyan_band.g == cyan.g
+            && cyan_band.b == cyan.b,
+               "RainbowAtDistance(4.9) equals RainbowAtDistance(4)");
+    }
+
     /* Rainbow blast is spatial, like any other rainbow fill — not one
        arrival hue baked in when random-from-dart was fixed. */
     {
@@ -548,12 +729,42 @@ int main()
         bs.blast_size = 3.5f;
         blast.SetSettings(bs);
         blast.SpawnBlast(0, 0, 0.0, 1);
-        /* expand = max(0.08, 3.5/10) = 0.35; fade 0 → snap after expand */
+        /* expand = lifetime 1, not size/speed (3.5/10 = 0.35). fade 0 snaps after. */
         RippleRGB live = blast.Sample(0, 0, 0.1);
         Expect(live.r > 200, "blast lights landing while expanding");
-        RippleRGB after = blast.Sample(0, 0, 0.36);
+        RippleRGB mid = blast.Sample(0, 0, 0.5);
+        Expect(mid.r > 200, "blast still expanding at t=0.5 (not size/speed)");
+        RippleRGB after = blast.Sample(0, 0, 1.01);
         Expect(after.r < 1 && after.g < 1 && after.b < 1,
                "after blast life elapsed, landing is idle");
+    }
+
+    {
+        RippleEngine fast;
+        RippleSettings fs = fast.GetSettings();
+        fs.enabled = true;
+        fs.color_mode = RippleColorMode::Solid;
+        fs.solid = {255, 0, 0};
+        fs.idle = {0, 0, 0};
+        fs.brush = RippleBrush::Fill;
+        fs.shape = RippleShape::Jump;
+        fs.speed = 50;
+        fs.lifetime = 1;
+        fs.fade = 0;
+        fs.brightness = 1;
+        fs.echo_count = 0;
+        fs.impact_flash = false;
+        fs.blend = RippleBlend::Max;
+        fs.paint_idle = true;
+        fs.blast_size = 3.5f;
+        fast.SetSettings(fs);
+        fast.SpawnBlast(0, 0, 0.0, 1);
+        RippleRGB still = fast.Sample(0, 0, 0.5);
+        Expect(still.r > 200,
+               "blast expand is lifetime even when size/speed is 0.07");
+        RippleRGB done = fast.Sample(0, 0, 1.01);
+        Expect(done.r < 1 && done.g < 1 && done.b < 1,
+               "fast-speed blast still snaps at lifetime");
     }
 
     {

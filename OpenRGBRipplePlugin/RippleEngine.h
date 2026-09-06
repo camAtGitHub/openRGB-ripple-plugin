@@ -243,7 +243,8 @@ public:
             return;
         }
         const float size = std::max(0.4f, settings_.blast_size);
-        const float expand = std::max(0.08f, size / std::max(0.1f, settings_.speed));
+        /* Outward lasts Lifetime, not size/speed. Retract is still Fade. */
+        const float expand = std::max(0.08f, settings_.lifetime);
         Ripple b;
         b.x          = x;
         b.y          = y;
@@ -389,6 +390,21 @@ public:
         ripples_.clear();
     }
 
+    /* Row/Col and Sweep: board is ~6 high vs ~22 wide, so a vertical trip
+       at the same u/s is over in a blink. 0.7 ≈ 30% slower. Horizontal,
+       circle, square, and dart are unchanged. */
+    static constexpr float AxisVerticalSpeed = 0.7f;
+
+    static float DirectedSpeed(const RippleSettings& s, const Ripple& ripple)
+    {
+        if((s.shape == RippleShape::Axis || s.shape == RippleShape::Sweep)
+           && ripple.axis == RippleAxis::Vertical)
+        {
+            return s.speed * AxisVerticalSpeed;
+        }
+        return s.speed;
+    }
+
     /* Expand at speed for up to `expand` seconds, then retract over fade.
        maxRadius (Sweep / Row-Col travel, blast size) caps the front: lifetime
        is a maximum, not a guaranteed crossing time. Hitting the cap or the
@@ -431,12 +447,13 @@ public:
 
     static RippleRGB RainbowAtDistance(float dist, float hue_offset = 0.0f)
     {
-        float h = std::fmod(dist / RainbowKeysPerCycle + hue_offset, 1.0f);
+        const float band = std::floor(std::max(0.f, dist));
+        float h = std::fmod(band / RainbowKeysPerCycle + hue_offset, 1.0f);
         if(h < 0.0f)
         {
             h += 1.0f;
         }
-        return HsvToRgb(h, 0.82f, 1.0f);
+        return HsvToRgb(h, 1.0f, 1.0f);
     }
 
     /* `now` is unused: rainbow is spatial (RainbowAtDistance at sample time).
@@ -702,8 +719,11 @@ private:
             if(ripple.blast)
             {
                 const float expand = ripple.expand > 0.0f ? ripple.expand : 0.18f;
+                const float blastSpeed = ripple.travel > 0.0f
+                    ? ripple.travel / std::max(expand, 1e-6f)
+                    : settings_.speed;
                 float radius = 0.0f;
-                if(!WaveRadius(settings_.speed, static_cast<float>(elapsed),
+                if(!WaveRadius(blastSpeed, static_cast<float>(elapsed),
                                expand, settings_.fade, radius, ripple.travel))
                 {
                     continue;
@@ -723,6 +743,7 @@ private:
                     const float band = std::fabs(dist - radius);
                     const float t = band / std::max(0.05f, settings_.thickness);
                     coverage = t >= 1.0f ? 0.0f : 1.0f - t * t;
+                    coverage = coverage > 0.002f ? 1.0f : 0.0f;
                 }
                 else
                 {
@@ -780,7 +801,7 @@ private:
 
             const float expand = ripple.expand > 0.0f ? ripple.expand : settings_.lifetime;
             float radius = 0.0f;
-            if(!WaveRadius(settings_.speed, static_cast<float>(elapsed),
+            if(!WaveRadius(DirectedSpeed(settings_, ripple), static_cast<float>(elapsed),
                            expand, settings_.fade, radius, ripple.travel))
             {
                 continue;
@@ -798,11 +819,12 @@ private:
             {
                 if(settings_.brush == RippleBrush::Ring)
                 {
-                    /* Parabolic crest: a linear tent is ~0.6 at the next key
-                       and mixes idle through. 1-t² stays opaque across the band. */
+                    /* Occupancy snap: in-band is fully on. Thickness still
+                       sets width via t = |dist-radius|/thickness. */
                     const float band = std::fabs(dist - radius);
                     const float t = band / std::max(0.05f, settings_.thickness);
                     coverage = t >= 1.0f ? 0.0f : 1.0f - t * t;
+                    coverage = coverage > 0.002f ? 1.0f : 0.0f;
                 }
                 else if(settings_.brush == RippleBrush::Fill)
                 {

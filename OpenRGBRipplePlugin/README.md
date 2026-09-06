@@ -41,14 +41,14 @@ If the script built the DLL but did not copy it:
 | Enabled | Arm the effect |
 | Brush | Ring / Fill / Soft |
 | Shape | Circle, Square, Row/Col, Sweep, Dart |
-| Color | Rainbow / Solid / Random |
+| Color | Rainbow / Solid / Random. Rainbow is saturated hue bands per key-width. |
 | Wave | Solid wave colour (click the swatch) |
 | Background | Colour of keys the wave is not on |
 | Blend | Over, Add, XOR, Screen, Overlay, Color Dodge, Color Burn, Exclusion |
 | Disable background | Leave unused keys alone for another effect |
 | Speed | Wave speed, keys/sec |
 | Thickness | Ring width |
-| Lifetime | Max expand seconds (min 0.05). Sweep / Row-Col travel at Speed and may finish sooner. Dart: idle boom waits this long from the last keydown |
+| Lifetime | Max expand seconds (min 0.05). Sweep / Row-Col travel at Speed and may finish sooner. Dart: idle wait after the last keydown, then the boom expands for this long |
 | Retract | Seconds to pull the front back to the key; 0 = snap off |
 | Echoes, brightness | Extra rings and overall brightness |
 | Jitter | Row/Col + Sweep: chance the wave takes the short way |

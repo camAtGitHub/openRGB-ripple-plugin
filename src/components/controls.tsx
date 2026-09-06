@@ -289,7 +289,7 @@ export function Controls() {
       <Row label="Speed" value={`${settings.speed.toFixed(1)} u/s`}>
         <Slider
           min={4}
-          max={28}
+          max={50}
           step={0.5}
           value={[settings.speed]}
           onValueChange={([v]) => set({ speed: v })}
@@ -319,7 +319,9 @@ export function Controls() {
           </p>
         ) : settings.shape === "jump" ? (
           <p className="text-[0.68rem] leading-snug text-fg-subtle">
-            Idle after the last key, then one boom there. Turn Auto demo off or it never idles.
+            Idle after the last key, then one boom there. The boom
+            expands for this long (Retract pulls it back). Turn Auto
+            demo off or it never idles.
           </p>
         ) : null}
       </Row>

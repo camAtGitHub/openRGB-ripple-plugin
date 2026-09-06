@@ -235,9 +235,10 @@ export function hsvToRgb(h: number, s: number, v: number): RGB {
 export const RAINBOW_KEYS_PER_CYCLE = 8;
 
 export function rainbowAtDistance(dist: number, hueOffset = 0): RGB {
-  let h = (dist / RAINBOW_KEYS_PER_CYCLE + hueOffset) % 1;
+  const band = Math.floor(Math.max(0, dist));
+  let h = (band / RAINBOW_KEYS_PER_CYCLE + hueOffset) % 1;
   if (h < 0) h += 1;
-  return hsvToRgb(h, 0.82, 1);
+  return hsvToRgb(h, 1, 1);
 }
 
 export function colorForPress(
@@ -337,7 +338,8 @@ export function spawnBlast(
   fromDart?: Ripple,
 ): Ripple {
   const size = Math.max(0.4, settings.blastSize);
-  const expand = Math.max(0.08, size / Math.max(0.1, settings.speed));
+  /* Outward lasts Lifetime, not size/speed. Retract is still Fade. */
+  const expand = Math.max(0.08, settings.lifetime);
   return {
     x,
     y,
@@ -432,6 +434,24 @@ export function blendLayer(
     g: (bg * coverage + dg * keep) * 255,
     b: (bb * coverage + db * keep) * 255,
   };
+}
+
+/**
+ * Row/Col and Sweep: the board is ~6 high vs ~22 wide, so a vertical trip
+ * at the same u/s is over in a blink. 0.7 ≈ 30% slower. Horizontal, circle,
+ * square, and dart are unchanged.
+ */
+export const AXIS_VERTICAL_SPEED = 0.7;
+
+/** Live travel rate for this ripple. Vertical axis/sweep uses AXIS_VERTICAL_SPEED. */
+export function directedSpeed(settings: RippleSettings, ripple: Ripple): number {
+  if (
+    (settings.shape === "axis" || settings.shape === "sweep") &&
+    ripple.axis === "v"
+  ) {
+    return settings.speed * AXIS_VERTICAL_SPEED;
+  }
+  return settings.speed;
 }
 
 /**
@@ -558,12 +578,15 @@ export function sampleRipples(
 
     if (ripple.blast) {
       const expand = ripple.expand ?? 0.18;
+      const cap = ripple.travel ?? 0;
+      const blastSpeed =
+        cap > 0 ? cap / Math.max(expand, 1e-6) : settings.speed;
       const radius = waveRadius(
-        settings.speed,
+        blastSpeed,
         elapsed,
         expand,
         settings.fade,
-        ripple.travel,
+        cap > 0 ? cap : undefined,
       );
       if (radius == null) continue;
       const dx = x - ripple.x;
@@ -572,12 +595,15 @@ export function sampleRipples(
         (ripple.blastShape ?? "circle") === "square"
           ? Math.max(Math.abs(dx), Math.abs(dy))
           : Math.hypot(dx, dy);
-      const coverage =
+      let coverage =
         settings.brush === "fill"
           ? dist <= radius
             ? 1
             : 0
           : brushCoverage(settings.brush, dist, radius, settings.thickness);
+      if (settings.brush === "ring") {
+        coverage = coverage > 0.002 ? 1 : 0;
+      }
       if (coverage <= 0.002) continue;
       const wave =
         settings.colorMode === "rainbow"
@@ -617,7 +643,7 @@ export function sampleRipples(
 
     const expand = ripple.expand ?? settings.lifetime;
     const radius = waveRadius(
-      settings.speed,
+      directedSpeed(settings, ripple),
       elapsed,
       expand,
       settings.fade,
@@ -639,6 +665,9 @@ export function sampleRipples(
             ? 1
             : 0
           : brushCoverage(settings.brush, dist, radius, settings.thickness);
+      if (settings.brush === "ring") {
+        coverage = coverage > 0.002 ? 1 : 0;
+      }
     }
 
     if (settings.impactFlash && hypot < 0.55) {

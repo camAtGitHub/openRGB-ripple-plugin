@@ -1,8 +1,10 @@
 import {
+  AXIS_VERTICAL_SPEED,
   DEFAULT_BOUNDS,
   DEFAULT_SETTINGS,
   axisHeadingName,
   dartArrivalColor,
+  directedSpeed,
   pickAxisDirection,
   rainbowAtDistance,
   sampleRipples,
@@ -10,6 +12,7 @@ import {
   spawnRipples,
   waveRadius,
   type RGB,
+  type Ripple,
   type RippleSettings,
 } from "./ripple.ts";
 
@@ -80,6 +83,94 @@ function fillSettings(shape: RippleSettings["shape"]): RippleSettings {
 }
 
 {
+  /* Ring occupancy: in-band is 1, else 0. Thickness still sets band width. */
+  const settings: RippleSettings = {
+    ...DEFAULT_SETTINGS,
+    brush: "ring",
+    shape: "circle",
+    fade: 0,
+    speed: 10,
+    lifetime: 1,
+    thickness: 1.15,
+    blend: "max",
+    impactFlash: false,
+    echoCount: 0,
+    colorMode: "solid",
+    solid: { r: 255, g: 0, b: 0 },
+    idle: { r: 0, g: 255, b: 255 },
+    brightness: 1,
+  };
+  const ripples = spawnRipples(settings, 0, 0, 0, 1, DEFAULT_BOUNDS);
+  const crest = sampleRipples(settings, ripples, 5, 0, 0.5);
+  expect(
+    crest.r >= 250 && crest.g <= 5 && crest.b <= 5,
+    "ring occupancy crest is full red",
+  );
+  const inband = sampleRipples(settings, ripples, 5.8, 0, 0.5);
+  expect(
+    inband.r >= 250 && inband.g <= 5 && inband.b <= 5,
+    "ring occupancy in-band is full red, not grey mix",
+  );
+  const out = sampleRipples(settings, ripples, 6.3, 0, 0.5);
+  expect(
+    out.r <= 5 && out.g >= 250 && out.b >= 250,
+    "ring occupancy outside band is idle cyan",
+  );
+}
+
+{
+  /* Complementary Ring blends after occupancy snap. Over/max is the
+     occupancy block above. Sample through spawn+sample, not blendLayer(1). */
+  const base: RippleSettings = {
+    ...DEFAULT_SETTINGS,
+    brush: "ring",
+    shape: "circle",
+    fade: 0,
+    speed: 10,
+    lifetime: 1,
+    thickness: 1.15,
+    impactFlash: false,
+    echoCount: 0,
+    colorMode: "solid",
+    solid: { r: 255, g: 0, b: 0 },
+    idle: { r: 0, g: 255, b: 255 },
+    brightness: 1,
+  };
+  const cases: Array<{
+    blend: RippleSettings["blend"];
+    onOk: (c: RGB) => boolean;
+    onMsg: string;
+  }> = [
+    {
+      blend: "add",
+      onOk: (c) => c.r >= 250 && c.g >= 250 && c.b >= 250,
+      onMsg: "ring occupancy add on-band is white",
+    },
+    {
+      blend: "burn",
+      onOk: (c) => c.r <= 5 && c.g <= 5 && c.b <= 5,
+      onMsg: "ring occupancy burn on-band is black",
+    },
+    {
+      blend: "overlay",
+      onOk: (c) => c.r >= 250 && c.g <= 5 && c.b <= 5,
+      onMsg: "ring occupancy overlay on-band is red",
+    },
+  ];
+  for (const c of cases) {
+    const settings = { ...base, blend: c.blend };
+    const ripples = spawnRipples(settings, 0, 0, 0, 1, DEFAULT_BOUNDS);
+    const on = sampleRipples(settings, ripples, 5, 0, 0.5);
+    expect(c.onOk(on), c.onMsg);
+    const off = sampleRipples(settings, ripples, 6.3, 0, 0.5);
+    expect(
+      off.r <= 5 && off.g >= 250 && off.b >= 250,
+      "ring occupancy " + c.blend + " off-band is idle cyan",
+    );
+  }
+}
+
+{
   const retract = waveRadius(10, 2.5, 1, 3);
   expect(retract != null && almost(retract, 5), "waveRadius(10, 2.5, 1, 3) → 5");
   expect(waveRadius(10, 1.01, 1, 0) === null, "waveRadius(10, 1.01, 1, 0) → null");
@@ -112,6 +203,57 @@ function fillSettings(shape: RippleSettings["shape"]): RippleSettings {
 }
 
 {
+  const settings = fillSettings("axis");
+  const base: Ripple = {
+    x: 10,
+    y: 3,
+    t0: 0,
+    color: settings.solid,
+    echo: 0,
+    travel: 20,
+    expand: 1,
+    life: 1,
+  };
+  const v: Ripple = { ...base, axis: "v", dir: -1 };
+  const h: Ripple = { ...base, axis: "h", dir: 1 };
+  expect(almost(AXIS_VERTICAL_SPEED, 0.7), "vertical axis speed factor is 0.7");
+  expect(
+    almost(directedSpeed(settings, v), 7),
+    "row/col vertical speed is 0.7x",
+  );
+  expect(
+    almost(directedSpeed(settings, h), 10),
+    "row/col horizontal speed is unchanged",
+  );
+  expect(
+    almost(directedSpeed(fillSettings("circle"), v), 10),
+    "circle ignores axis speed factor",
+  );
+  /* t=0.4, speed 10 → h radius 4, v radius 2.8 */
+  expect(
+    isLit(sampleRipples(settings, [h], 13, 3, 0.4)),
+    "row/col horizontal dist 3 still at full speed",
+  );
+  expect(
+    isLit(sampleRipples(settings, [v], 10, 1.2, 0.4)),
+    "row/col vertical 0.7x still covers dist 1.8",
+  );
+  expect(
+    isIdle(sampleRipples(settings, [v], 10, 0, 0.4), settings.idle),
+    "row/col vertical dist 3 not yet reached at 0.7x",
+  );
+  const sweep = { ...settings, shape: "sweep" as const, sweepSpan: 1 };
+  expect(
+    almost(directedSpeed(sweep, v), 7),
+    "sweep vertical speed is 0.7x",
+  );
+  expect(
+    isIdle(sampleRipples(sweep, [v], 10, 0, 0.4), sweep.idle),
+    "sweep vertical dist 3 not yet reached at 0.7x",
+  );
+}
+
+{
   const settings: RippleSettings = {
     ...DEFAULT_SETTINGS,
     shape: "jump",
@@ -134,13 +276,25 @@ function fillSettings(shape: RippleSettings["shape"]): RippleSettings {
 {
   const origin = rainbowAtDistance(0);
   expect(
-    origin.r > 200 && origin.r > origin.g && origin.r > origin.b,
-    "rainbowAtDistance(0) red-ish",
+    origin.r >= 254 && origin.g <= 1 && origin.b <= 1,
+    "rainbowAtDistance(0) true red",
+  );
+  const originBand = rainbowAtDistance(0.9);
+  expect(
+    originBand.r === origin.r &&
+      originBand.g === origin.g &&
+      originBand.b === origin.b,
+    "rainbowAtDistance(0.9) equals rainbowAtDistance(0)",
   );
   const cyan = rainbowAtDistance(4);
   expect(
-    cyan.g > 200 && cyan.b > 200 && cyan.r < 80,
-    "rainbowAtDistance(4) cyan-ish",
+    cyan.r <= 1 && cyan.g >= 254 && cyan.b >= 254,
+    "rainbowAtDistance(4) true cyan",
+  );
+  const cyanBand = rainbowAtDistance(4.9);
+  expect(
+    cyanBand.r === cyan.r && cyanBand.g === cyan.g && cyanBand.b === cyan.b,
+    "rainbowAtDistance(4.9) equals rainbowAtDistance(4)",
   );
   const settings: RippleSettings = {
     ...fillSettings("circle"),
@@ -149,8 +303,14 @@ function fillSettings(shape: RippleSettings["shape"]): RippleSettings {
   const ripples = spawnRipples(settings, 0, 0, 0, 1, DEFAULT_BOUNDS);
   const at0 = sampleRipples(settings, ripples, 0, 0, 0.5);
   const at4 = sampleRipples(settings, ripples, 4, 0, 0.5);
-  expect(at0.r > 200 && at0.r > at0.g, "sample rainbow at origin is red-ish");
-  expect(at4.g > 200 && at4.b > 200 && at4.r < 80, "sample rainbow at dist 4 is cyan-ish");
+  expect(
+    at0.r >= 254 && at0.g <= 1 && at0.b <= 1,
+    "sample rainbow at origin is true red",
+  );
+  expect(
+    at4.r <= 1 && at4.g >= 254 && at4.b >= 254,
+    "sample rainbow at dist 4 is true cyan",
+  );
   expect(
     at0.r !== at4.r || at0.g !== at4.g,
     "rainbow is wave-distance, not spawn-time random",
@@ -246,6 +406,30 @@ function fillSettings(shape: RippleSettings["shape"]): RippleSettings {
   expect(
     at4.g > 200 && at4.b > 200 && at4.r < 80,
     "rainbow blast at dist 4 is cyan-ish",
+  );
+}
+
+{
+  /* Dart boom: expand is Lifetime, not blastSize/speed. fade 0 snaps at expand. */
+  const settings: RippleSettings = {
+    ...fillSettings("jump"),
+    speed: 50,
+    lifetime: 1,
+    fade: 0,
+    blastSize: 3.5,
+  };
+  const blast = spawnBlast(settings, 0, 0, 0, 1);
+  expect(
+    almost(blast.expand ?? 0, 1),
+    "blast expand is lifetime, not size/speed (3.5/50 = 0.07)",
+  );
+  expect(
+    isLit(sampleRipples(settings, [blast], 0, 0, 0.5)),
+    "blast still expanding at t=0.5 when speed would have finished",
+  );
+  expect(
+    isIdle(sampleRipples(settings, [blast], 0, 0, 1.01), settings.idle),
+    "blast snaps at lifetime when fade 0",
   );
 }
 
