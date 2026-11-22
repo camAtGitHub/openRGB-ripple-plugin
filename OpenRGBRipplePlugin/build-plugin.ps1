@@ -69,6 +69,7 @@ function Get-Python {
 }
 
 Write-Host "== OpenRGB Ripple Plugin builder ==" -ForegroundColor Cyan
+Write-Host "Tip: Use arg: -NoInstall to avoid inplace upgrades" -ForegroundColor Cyan
 
 $vcvars = Find-VcVars
 if (-not $vcvars) {
