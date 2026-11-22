@@ -57,8 +57,8 @@ If the script built the DLL but did not copy it:
 | Trail | Dart: keys lit behind the head. 0 = blob only |
 | Explosion | Dart blast shape: Circle or Square |
 | Blast size | Dart explosion radius in key-widths |
-| Idle timeout | Only shown when the Effects plugin is installed. Disabled or 1–60 min without a keypress → **Start All Effects** (Effects plugin) and Ripple steps aside. Skipped if Effects is not loaded. Next keypress stops Effects and Ripple resumes with your settings |
-| Lights off | Disabled or 1–120 min (must be longer than Idle timeout) → **Stop All Effects**, then all keyboards go dark. Next keypress resumes Ripple |
+| Idle Timeout (enable effects) | Only shown when the Effects plugin is installed. Disabled or 1–60 min without a keypress → **Start All Effects** (Effects plugin) and Ripple steps aside. Skipped if Effects is not loaded. Next keypress stops Effects and Ripple resumes with your settings |
+| Turn off Keyboard | Disabled or 1–120 min (must be longer than Idle Timeout; stepping up jumps past it) → **Stop All Effects**, then all keyboards go dark. Next keypress resumes Ripple |
 | Keyboards | Which devices to paint |
 | Tray | Enable / Disable |
 

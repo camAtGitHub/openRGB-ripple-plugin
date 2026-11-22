@@ -362,7 +362,7 @@ void RippleWidget::BuildUi()
     connect(idle_box_, &QCheckBox::toggled, this, &RippleWidget::OnUiChanged);
     root->addWidget(idle_box_);
 
-    auto* timeouts_box = new QGroupBox("Idle");
+    auto* timeouts_box = new QGroupBox("Idle Timeouts");
     auto* timeouts = new QGridLayout(timeouts_box);
     timeouts->setHorizontalSpacing(10);
     auto make_minutes = [&](int row_i, const char* name, int max, const char* tip,
@@ -383,15 +383,15 @@ void RippleWidget::BuildUi()
         timeouts->addWidget(spin, row_i, 1);
     };
     QLabel* lights_off_lbl = nullptr;
-    make_minutes(0, "Idle timeout", 60,
+    make_minutes(0, "Idle Timeout (enable effects)", 60,
         "Minutes without a keypress before Ripple hands over to the Effects "
         "plugin (Start All Effects). A keypress stops Effects and brings "
         "Ripple back.",
         idle_timeout_, idle_timeout_lbl_);
-    make_minutes(1, "Lights off", 120,
+    make_minutes(1, "Turn off Keyboard", 120,
         "Minutes without a keypress before keyboards go dark (stops all "
-        "effects first). Must be longer than Idle timeout; setting it at or "
-        "below Idle timeout turns it off.",
+        "effects first). Must be longer than Idle Timeout: stepping up jumps "
+        "past it, stepping down to it disables this.",
         lights_off_, lights_off_lbl);
     /* Hidden until showEvent finds the Effects plugin. */
     idle_timeout_lbl_->setVisible(false);
@@ -422,7 +422,7 @@ void RippleWidget::showEvent(QShowEvent* event)
     if(have_effects != effects_present_)
     {
         effects_present_ = have_effects;
-        OnUiChanged(); /* re-apply the Lights off > Idle timeout rule */
+        OnUiChanged(); /* re-apply the Turn off Keyboard > Idle Timeout rule */
     }
 }
 
@@ -591,14 +591,19 @@ void RippleWidget::OnUiChanged()
     s.enabled    = enable_box_->isChecked();
     if(idle_timeout_ && lights_off_)
     {
+        const int prev_lights_off = engine_.GetSettings().lights_off_min;
         s.idle_timeout_min = idle_timeout_->value();
         s.lights_off_min   = lights_off_->value();
-        /* Stepping Lights off down to or past Idle timeout turns it off;
-           raising Idle timeout past Lights off pushes Lights off up. */
+        /* Turn off Keyboard must be longer than Idle Timeout. Moving it into
+           the gap jumps across: up (e.g. from Disabled) lands on idle + 1,
+           down lands on Disabled. Raising Idle Timeout past it pushes it up
+           (ClampIdleTimeouts). */
         if(effects_present_ && sender() == lights_off_ && s.idle_timeout_min > 0
            && s.lights_off_min > 0 && s.lights_off_min <= s.idle_timeout_min)
         {
-            s.lights_off_min = 0;
+            s.lights_off_min = (s.lights_off_min > prev_lights_off)
+                ? s.idle_timeout_min + 1
+                : 0;
         }
         ClampIdleTimeouts(s, effects_present_);
         if(lights_off_->value() != s.lights_off_min)
@@ -1059,7 +1064,7 @@ void RippleWidget::OnTick()
     {
         return;
     }
-    const QString idle_state = lights_off_fired_ ? " · lights off"
+    const QString idle_state = lights_off_fired_ ? " · Keyboard turned off"
                              : suspended_        ? " · idle (Effects running)"
                              : "";
     status_->setText(QString("Mapped %1 LEDs · %2 waves · hook %3%4")
