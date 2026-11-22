@@ -113,6 +113,8 @@ struct RippleSettings
     RippleBlastShape blast_shape = RippleBlastShape::Circle;
     bool            enabled      = true;
     bool            paint_idle   = true; /* false = leave idle keys for Effects / shaders */
+    int             idle_timeout_min = 0; /* 0 = off. Minutes without a key before Start All Effects. */
+    int             lights_off_min   = 0; /* 0 = off. Minutes without a key before keyboards go dark. */
 };
 
 struct Ripple

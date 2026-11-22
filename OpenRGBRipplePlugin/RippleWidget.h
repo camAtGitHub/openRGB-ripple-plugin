@@ -12,6 +12,7 @@ class QComboBox;
 class QLabel;
 class QPushButton;
 class QSlider;
+class QSpinBox;
 class QTimer;
 class ResourceManagerInterface;
 class DeviceSession;
@@ -36,6 +37,9 @@ public:
 public slots:
     void SetEnabled(bool on);
 
+protected:
+    void showEvent(QShowEvent* event) override;
+
 private slots:
     void OnUiChanged();
     void OnTick();
@@ -48,8 +52,11 @@ private:
     void LoadSettings();
     void SaveSettings();
     void SyncUiFromSettings(const RippleSettings& s);
-    void ConsumeKeys();
+    bool ConsumeKeys();
     void Paint();
+    void CheckIdle(double now);
+    void WakeFromIdle();
+    void PaintLightsOff();
     void UpdateSliderLabels();
     void ShowShapeExtras();
     void SetColorButton(QPushButton* btn, const RippleRGB& c);
@@ -92,6 +99,9 @@ private:
     QLabel*     blast_size_val_  = nullptr;
     QCheckBox*  impact_box_   = nullptr;
     QCheckBox*  idle_box_     = nullptr;
+    QLabel*     idle_timeout_lbl_ = nullptr;
+    QSpinBox*   idle_timeout_ = nullptr;
+    QSpinBox*   lights_off_   = nullptr;
     QLabel*     status_       = nullptr;
     QPushButton* color_btn_   = nullptr;
     QPushButton* idle_btn_    = nullptr;
@@ -106,4 +116,14 @@ private:
     bool                   suppress_ui_ = false;
     QTimer*                timer_ = nullptr;
     QTimer*                save_timer_ = nullptr;
+
+    /* Idle registers: each latches once its timeout is breached and
+       clears on the next keypress. */
+    double                 last_key_at_ = 0;
+    bool                   idle_fired_ = false;
+    bool                   lights_off_fired_ = false;
+    bool                   effects_present_ = false; /* Effects plugin found on last show */
+    bool                   effects_started_ = false; /* we pressed Start All Effects */
+    bool                   suspended_ = false;       /* Ripple stops painting; settings untouched */
+    QTimer*                lights_off_timer_ = nullptr;
 };

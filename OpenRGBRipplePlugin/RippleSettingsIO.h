@@ -3,6 +3,22 @@
 #include "RippleEngine.h"
 #include "SettingsManager.h"
 
+#include <algorithm>
+
+/* Idle 0-60 min, lights off 0-120 min (0 = off). With enforce_order, lights
+   off must fire after idle; skip it when Effects is missing, since the
+   saved idle timeout does nothing then. */
+static void ClampIdleTimeouts(RippleSettings& s, bool enforce_order)
+{
+    s.idle_timeout_min = std::clamp(s.idle_timeout_min, 0, 60);
+    s.lights_off_min   = std::clamp(s.lights_off_min, 0, 120);
+    if(enforce_order && s.idle_timeout_min > 0 && s.lights_off_min > 0
+       && s.lights_off_min <= s.idle_timeout_min)
+    {
+        s.lights_off_min = s.idle_timeout_min + 1;
+    }
+}
+
 template<typename T>
 static bool JsonGet(const json& j, const char* key, T& out)
 {
@@ -57,6 +73,10 @@ static RippleSettings SettingsFromJson(const json& j, RippleSettings s)
     JsonGet(j, "blast_size", s.blast_size);
     int blast_shape = static_cast<int>(s.blast_shape);
     JsonGet(j, "blast_shape", blast_shape);
+    JsonGet(j, "idle_timeout_min", s.idle_timeout_min);
+    JsonGet(j, "lights_off_min", s.lights_off_min);
+    /* Effects presence is unknown at load; the widget enforces order once shown. */
+    ClampIdleTimeouts(s, false);
     if(brush >= 0 && brush <= 2) s.brush = static_cast<RippleBrush>(brush);
     if(shape >= 0 && shape <= 4) s.shape = static_cast<RippleShape>(shape);
     if(color_mode >= 0 && color_mode <= 2) s.color_mode = static_cast<RippleColorMode>(color_mode);
@@ -96,5 +116,7 @@ static json SettingsToJson(const RippleSettings& s)
     j["trail_length"] = s.trail_length;
     j["blast_size"] = s.blast_size;
     j["blast_shape"] = static_cast<int>(s.blast_shape);
+    j["idle_timeout_min"] = s.idle_timeout_min;
+    j["lights_off_min"] = s.lights_off_min;
     return j;
 }

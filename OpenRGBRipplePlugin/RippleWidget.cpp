@@ -11,6 +11,8 @@
 #include "RGBController.h"
 #include "SettingsManager.h"
 
+#include <QAction>
+#include <QApplication>
 #include <QCheckBox>
 #include <QColorDialog>
 #include <QComboBox>
@@ -18,7 +20,9 @@
 #include <QGroupBox>
 #include <QLabel>
 #include <QPushButton>
+#include <QShowEvent>
 #include <QSlider>
+#include <QSpinBox>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <algorithm>
@@ -44,6 +48,33 @@ static unsigned int ToRgb(const RippleRGB& c)
     return ToRGBColor(ClampByte(c.r), ClampByte(c.g), ClampByte(c.b));
 }
 
+/* Effects plugin tray actions (same lookup the Scheduler plugin used).
+   Returns false when Effects is not loaded, so callers can skip. */
+static const char* const EFFECTS_START_ALL = "OpenRGBEffectsPlugin::Action::StartAll";
+static const char* const EFFECTS_STOP_ALL  = "OpenRGBEffectsPlugin::Action::StopAll";
+
+static QAction* FindEffectsAction(const char* object_name)
+{
+    for(QWidget* w : QApplication::topLevelWidgets())
+    {
+        if(QAction* action = w->findChild<QAction*>(object_name))
+        {
+            return action;
+        }
+    }
+    return nullptr;
+}
+
+static bool TriggerEffectsAction(const char* object_name)
+{
+    QAction* action = FindEffectsAction(object_name);
+    if(action)
+    {
+        action->trigger();
+    }
+    return action != nullptr;
+}
+
 static QSlider* MakeSlider(int min, int max, int value)
 {
     QSlider* s = new QSlider(Qt::Horizontal);
@@ -66,6 +97,12 @@ RippleWidget::RippleWidget(ResourceManagerInterface* rm, DeviceSession* session,
     save_timer_->setSingleShot(true);
     save_timer_->setInterval(400);
     connect(save_timer_, &QTimer::timeout, this, &RippleWidget::FlushSettings);
+    /* Gap between Stop All Effects and going dark, so Effects' last
+       frame cannot land on top of the black write. */
+    lights_off_timer_ = new QTimer(this);
+    lights_off_timer_->setSingleShot(true);
+    lights_off_timer_->setInterval(500);
+    connect(lights_off_timer_, &QTimer::timeout, this, &RippleWidget::PaintLightsOff);
 }
 
 RippleWidget::~RippleWidget()
@@ -105,6 +142,7 @@ void RippleWidget::ResumePainting()
 
 void RippleWidget::StartRuntime()
 {
+    last_key_at_ = NowSeconds();
     if(hook_)
     {
         hook_->Start();
@@ -125,6 +163,10 @@ void RippleWidget::Shutdown()
     {
         save_timer_->stop();
     }
+    if(lights_off_timer_)
+    {
+        lights_off_timer_->stop();
+    }
     if(hook_)
     {
         hook_->Stop();
@@ -138,7 +180,7 @@ void RippleWidget::BuildUi()
     root->setContentsMargins(16, 16, 16, 16);
     root->setSpacing(12);
 
-    auto* title = new QLabel("Ripple 1.0.10");
+    auto* title = new QLabel("Ripple 1.1.0");
     QFont f = title->font();
     f.setPointSize(16);
     f.setBold(true);
@@ -321,6 +363,42 @@ void RippleWidget::BuildUi()
     connect(idle_box_, &QCheckBox::toggled, this, &RippleWidget::OnUiChanged);
     root->addWidget(idle_box_);
 
+    auto* timeouts_box = new QGroupBox("Idle");
+    auto* timeouts = new QGridLayout(timeouts_box);
+    timeouts->setHorizontalSpacing(10);
+    auto make_minutes = [&](int row_i, const char* name, int max, const char* tip,
+                            QSpinBox*& spin, QLabel*& l)
+    {
+        l = new QLabel(name);
+        l->setMinimumWidth(80);
+        timeouts->addWidget(l, row_i, 0);
+        spin = new QSpinBox();
+        spin->setRange(0, max);
+        spin->setSpecialValueText("Disabled");
+        spin->setSuffix(" min");
+        spin->setKeyboardTracking(false); /* no clamping mid-typing */
+        spin->setToolTip(tip);
+        l->setBuddy(spin);
+        connect(spin, QOverload<int>::of(&QSpinBox::valueChanged),
+                this, &RippleWidget::OnUiChanged);
+        timeouts->addWidget(spin, row_i, 1);
+    };
+    QLabel* lights_off_lbl = nullptr;
+    make_minutes(0, "Idle timeout", 60,
+        "Minutes without a keypress before Ripple hands over to the Effects "
+        "plugin (Start All Effects). A keypress stops Effects and brings "
+        "Ripple back.",
+        idle_timeout_, idle_timeout_lbl_);
+    make_minutes(1, "Lights off", 120,
+        "Minutes without a keypress before keyboards go dark (stops all "
+        "effects first). Must be longer than Idle timeout; setting it at or "
+        "below Idle timeout turns it off.",
+        lights_off_, lights_off_lbl);
+    /* Hidden until showEvent finds the Effects plugin. */
+    idle_timeout_lbl_->setVisible(false);
+    idle_timeout_->setVisible(false);
+    root->addWidget(timeouts_box);
+
     auto* devices_box = new QGroupBox("Keyboards");
     auto* devices_lay = new QVBoxLayout(devices_box);
     device_list_ = new QWidget();
@@ -333,6 +411,20 @@ void RippleWidget::BuildUi()
     status_->setWordWrap(true);
     root->addWidget(status_);
     root->addStretch(1);
+}
+
+/* Effects may load after Ripple, so check each time the tab is shown. */
+void RippleWidget::showEvent(QShowEvent* event)
+{
+    QWidget::showEvent(event);
+    const bool have_effects = FindEffectsAction(EFFECTS_START_ALL) != nullptr;
+    if(idle_timeout_lbl_) idle_timeout_lbl_->setVisible(have_effects);
+    if(idle_timeout_) idle_timeout_->setVisible(have_effects);
+    if(have_effects != effects_present_)
+    {
+        effects_present_ = have_effects;
+        OnUiChanged(); /* re-apply the Lights off > Idle timeout rule */
+    }
 }
 
 void RippleWidget::SetEnabled(bool on)
@@ -498,6 +590,25 @@ void RippleWidget::OnUiChanged()
     s.blend      = static_cast<RippleBlend>(blend_box_->currentIndex());
     s.paint_idle = !idle_box_ || !idle_box_->isChecked();
     s.enabled    = enable_box_->isChecked();
+    if(idle_timeout_ && lights_off_)
+    {
+        s.idle_timeout_min = idle_timeout_->value();
+        s.lights_off_min   = lights_off_->value();
+        /* Stepping Lights off down to or past Idle timeout turns it off;
+           raising Idle timeout past Lights off pushes Lights off up. */
+        if(effects_present_ && sender() == lights_off_ && s.idle_timeout_min > 0
+           && s.lights_off_min > 0 && s.lights_off_min <= s.idle_timeout_min)
+        {
+            s.lights_off_min = 0;
+        }
+        ClampIdleTimeouts(s, effects_present_);
+        if(lights_off_->value() != s.lights_off_min)
+        {
+            suppress_ui_ = true;
+            lights_off_->setValue(s.lights_off_min);
+            suppress_ui_ = false;
+        }
+    }
     engine_.SetSettings(s);
     SaveSettings();
 }
@@ -549,6 +660,14 @@ void RippleWidget::SyncUiFromSettings(const RippleSettings& s)
     if(blend_box_)
     {
         blend_box_->setCurrentIndex(static_cast<int>(s.blend));
+    }
+    if(idle_timeout_)
+    {
+        idle_timeout_->setValue(s.idle_timeout_min);
+    }
+    if(lights_off_)
+    {
+        lights_off_->setValue(s.lights_off_min);
     }
     SetColorButton(color_btn_, s.solid);
     SetColorButton(idle_btn_, s.idle);
@@ -653,16 +772,17 @@ void RippleWidget::BindDevicesFromSession()
     }
 }
 
-void RippleWidget::ConsumeKeys()
+/* Returns true when at least one key was pressed since the last call. */
+bool RippleWidget::ConsumeKeys()
 {
     if(!hook_ || !session_)
     {
-        return;
+        return false;
     }
     const std::vector<KeyEvent> events = hook_->Drain();
     if(events.empty())
     {
-        return;
+        return false;
     }
 
     session_->WithLive([&](const auto&, const auto& mapped)
@@ -758,6 +878,7 @@ void RippleWidget::ConsumeKeys()
             }
         }
     });
+    return true;
 }
 
 static RippleRGB FromRgb(RGBColor c)
@@ -774,7 +895,7 @@ void RippleWidget::Paint()
     const double now = NowSeconds();
     engine_.Prune(now);
     const RippleSettings s = engine_.GetSettings();
-    if(!s.enabled)
+    if(!s.enabled || suspended_)
     {
         return;
     }
@@ -837,13 +958,86 @@ void RippleWidget::Paint()
     });
 }
 
+void RippleWidget::CheckIdle(double now)
+{
+    const RippleSettings s = engine_.GetSettings();
+    const double idle_seconds = now - last_key_at_;
+
+    if(!idle_fired_ && s.idle_timeout_min > 0
+       && idle_seconds >= s.idle_timeout_min * 60.0)
+    {
+        idle_fired_ = true;
+        /* Ripple only steps aside when Effects is there to take over. */
+        if(TriggerEffectsAction(EFFECTS_START_ALL))
+        {
+            effects_started_ = true;
+            suspended_ = true;
+        }
+    }
+
+    if(!lights_off_fired_ && s.lights_off_min > 0
+       && idle_seconds >= s.lights_off_min * 60.0)
+    {
+        lights_off_fired_ = true;
+        suspended_ = true;
+        TriggerEffectsAction(EFFECTS_STOP_ALL);
+        effects_started_ = false;
+        lights_off_timer_->start();
+    }
+}
+
+void RippleWidget::WakeFromIdle()
+{
+    lights_off_timer_->stop();
+    if(effects_started_)
+    {
+        TriggerEffectsAction(EFFECTS_STOP_ALL);
+        effects_started_ = false;
+    }
+    idle_fired_ = false;
+    lights_off_fired_ = false;
+    suspended_ = false;
+}
+
+void RippleWidget::PaintLightsOff()
+{
+    if(!session_ || !lights_off_fired_)
+    {
+        return;
+    }
+    session_->WithLive([&](const auto& devices, const auto&)
+    {
+        for(const auto& d : devices)
+        {
+            if(!d.controller)
+            {
+                continue;
+            }
+            for(RGBColor& c : d.controller->colors)
+            {
+                c = ToRGBColor(0, 0, 0);
+            }
+            d.controller->DeviceUpdateLEDs();
+        }
+    });
+}
+
 void RippleWidget::OnTick()
 {
     if(!session_ || !session_->IsLive())
     {
         return;
     }
-    ConsumeKeys();
+    const double tick_now = NowSeconds();
+    if(ConsumeKeys())
+    {
+        last_key_at_ = tick_now;
+        if(idle_fired_ || lights_off_fired_)
+        {
+            WakeFromIdle();
+        }
+    }
+    CheckIdle(tick_now);
     {
         const RippleSettings s = engine_.GetSettings();
         const double now = NowSeconds();
@@ -874,8 +1068,12 @@ void RippleWidget::OnTick()
     {
         return;
     }
-    status_->setText(QString("Mapped %1 LEDs · %2 waves · hook %3")
+    const QString idle_state = lights_off_fired_ ? " · lights off"
+                             : suspended_        ? " · idle (Effects running)"
+                             : "";
+    status_->setText(QString("Mapped %1 LEDs · %2 waves · hook %3%4")
                          .arg(mapped)
                          .arg(engine_.ActiveCount())
-                         .arg(hook_->IsRunning() ? "active" : "off"));
+                         .arg(hook_->IsRunning() ? "active" : "off")
+                         .arg(idle_state));
 }
