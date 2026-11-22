@@ -1,7 +1,8 @@
 # OpenRGB Ripple Plugin
 
-Windows plugin for [OpenRGB](https://openrgb.org) **1.1**
-(Plugin API **5**, Qt **6.8**).
+Windows plugin for [OpenRGB](https://openrgb.org).
+Requires OpenRGB release **1.1** (Plugin API **v5**, Qt **6.8**).
+OpenRGB 1.0 and the 1.0 release candidates (Plugin API v4) will not load it.
 
 The **Ripple** tab inside OpenRGB holds the config panel.
 

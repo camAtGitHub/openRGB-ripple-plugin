@@ -1,7 +1,7 @@
 # Ripple
 
 Artemis-style key-press ripple plugin for [OpenRGB](https://openrgb.org).  
-Compatible with Windows · OpenRGB Plugin API v5 · OpenRGB 1.1
+Windows · **Requires OpenRGB release 1.1** (Plugin API v5, Qt 6)
 
 <p align="center">
   <img src="public/og.jpg" alt="Ripple expanding from a key on a backlit keyboard" width="860">
@@ -15,6 +15,8 @@ Single DLL installation integrated into openRGB's tabbed menu.
 The plugin installs a Windows keyboard-hook, which may trigger an antivirus false positive. No issues with Microsoft Defender at present.
 
 ## Installation
+
+Requires **OpenRGB release 1.1** (Plugin API v5). OpenRGB 1.0 and the 1.0 release candidates use Plugin API v4 and will not load this DLL.
 
 Download the dll from the [releases](https://github.com/camAtGitHub/openRGB-ripple-plugin/releases) page and copy it to `%APPDATA%\OpenRGB\plugins`. Restart OpenRGB and open the **Ripple** tab.
 
