@@ -1,11 +1,11 @@
 /*---------------------------------------------------------*\
 | DeviceSession.cpp                                         |
-|   Cached RGBController* + generation. No Qt widgets.      |
+|   Cached controller ptrs + generation. No Qt widgets.     |
 |   SPDX-License-Identifier: GPL-2.0-or-later               |
 \*---------------------------------------------------------*/
 
 #include "DeviceSession.h"
-#include "RGBController.h"
+#include "RGBControllerInterface.h"
 
 void DeviceSession::Invalidate()
 {
@@ -19,7 +19,7 @@ void DeviceSession::Invalidate()
     }
 }
 
-void DeviceSession::Rebuild(const std::vector<RGBController*>& snapshot)
+void DeviceSession::Rebuild(const std::vector<RGBControllerInterface*>& snapshot)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     live_ = false;
@@ -27,22 +27,23 @@ void DeviceSession::Rebuild(const std::vector<RGBController*>& snapshot)
     live_ = true;
 }
 
-void DeviceSession::RebuildUnlocked(const std::vector<RGBController*>& snapshot)
+void DeviceSession::RebuildUnlocked(const std::vector<RGBControllerInterface*>& snapshot)
 {
     const std::vector<DeviceOpt> previous = devices_;
     devices_.clear();
     mapped_.clear();
 
-    for(RGBController* controller : snapshot)
+    for(RGBControllerInterface* controller : snapshot)
     {
         if(!controller)
         {
             continue;
         }
+        const device_type type = controller->GetDeviceType();
         const bool is_kb =
-            controller->type == DEVICE_TYPE_KEYBOARD ||
-            controller->type == DEVICE_TYPE_KEYPAD ||
-            controller->type == DEVICE_TYPE_LAPTOP;
+            type == DEVICE_TYPE_KEYBOARD ||
+            type == DEVICE_TYPE_KEYPAD ||
+            type == DEVICE_TYPE_LAPTOP;
         if(!is_kb)
         {
             continue;
@@ -50,7 +51,7 @@ void DeviceSession::RebuildUnlocked(const std::vector<RGBController*>& snapshot)
 
         DeviceOpt opt;
         opt.controller = controller;
-        opt.name       = controller->name;
+        opt.name       = controller->GetName();
         opt.selected   = true;
         for(const DeviceOpt& prev : previous)
         {
@@ -66,38 +67,50 @@ void DeviceSession::RebuildUnlocked(const std::vector<RGBController*>& snapshot)
            Do not call UpdateMode() here — that queues a USB write. */
         controller->SetCustomMode();
 
-        for(size_t z = 0; z < controller->zones.size(); z++)
+        const unsigned int zone_count = controller->GetZoneCount();
+        for(unsigned int z = 0; z < zone_count; z++)
         {
-            zone& zn = controller->zones[z];
-            if(zn.type == ZONE_TYPE_MATRIX && zn.matrix_map && zn.matrix_map->map)
+            const zone_type    zt    = controller->GetZoneType(z);
+            const unsigned int start = controller->GetZoneStartIndex(z);
+            /* Copy, not GetZoneMatrixMapData(): that points into the
+               controller and dies with a ResizeZone. */
+            const matrix_map_type mm = controller->GetZoneMatrixMap(z);
+            const bool is_matrix =
+                zt == ZONE_TYPE_MATRIX ||
+                zt == ZONE_TYPE_MATRIX_LOOP_X ||
+                zt == ZONE_TYPE_MATRIX_LOOP_Y;
+            if(is_matrix && mm.height > 0 && mm.width > 0
+               && mm.map.size() >= static_cast<size_t>(mm.height) * mm.width)
             {
-                const unsigned int h = zn.matrix_map->height;
-                const unsigned int w = zn.matrix_map->width;
+                const unsigned int h = mm.height;
+                const unsigned int w = mm.width;
                 for(unsigned int y = 0; y < h; y++)
                 {
                     for(unsigned int x = 0; x < w; x++)
                     {
-                        const unsigned int idx = zn.matrix_map->map[y * w + x];
+                        const unsigned int idx = mm.map[y * w + x];
                         if(idx == 0xFFFFFFFFu)
                         {
                             continue;
                         }
                         MappedLed led;
                         led.controller = controller;
-                        led.led_index  = zn.start_idx + idx;
+                        led.led_index  = start + idx;
                         led.x          = static_cast<float>(x);
                         led.y          = static_cast<float>(y);
                         mapped_.push_back(led);
                     }
                 }
             }
-            else if(zn.type == ZONE_TYPE_LINEAR || zn.type == ZONE_TYPE_SINGLE)
+            else if(zt == ZONE_TYPE_LINEAR || zt == ZONE_TYPE_LINEAR_LOOP
+                    || zt == ZONE_TYPE_SINGLE)
             {
-                for(unsigned int i = 0; i < zn.leds_count; i++)
+                const unsigned int count = controller->GetZoneLEDsCount(z);
+                for(unsigned int i = 0; i < count; i++)
                 {
                     MappedLed led;
                     led.controller = controller;
-                    led.led_index  = zn.start_idx + i;
+                    led.led_index  = start + i;
                     led.x          = static_cast<float>(i);
                     led.y          = 0.0f;
                     mapped_.push_back(led);
@@ -130,13 +143,15 @@ void DeviceSession::PushDirectMode()
     {
         if(d.controller && DeviceSelected(d.controller))
         {
-            /* Sync apply. UpdateMode() only flags DeviceCallThread. */
-            d.controller->DeviceUpdateMode();
+            /* API 5 hides DeviceUpdateMode(). UpdateMode() flags the
+               controller's DeviceCallThread, which runs a pending mode
+               before pending LEDs, so the first frame is not lost. */
+            d.controller->UpdateMode();
         }
     }
 }
 
-bool DeviceSession::DeviceSelected(RGBController* controller) const
+bool DeviceSession::DeviceSelected(RGBControllerInterface* controller) const
 {
     if(!controller)
     {

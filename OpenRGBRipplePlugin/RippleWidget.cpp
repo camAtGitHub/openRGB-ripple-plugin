@@ -7,9 +7,8 @@
 #include "KeyboardHook.h"
 #include "KeyMap.h"
 #include "RippleSettingsIO.h"
-#include "ResourceManagerInterface.h"
-#include "RGBController.h"
-#include "SettingsManager.h"
+#include "OpenRGBPluginInterface.h"
+#include "RGBControllerInterface.h"
 
 #include <QAction>
 #include <QApplication>
@@ -83,8 +82,8 @@ static QSlider* MakeSlider(int min, int max, int value)
     return s;
 }
 
-RippleWidget::RippleWidget(ResourceManagerInterface* rm, DeviceSession* session, QWidget* parent)
-    : QWidget(parent), rm_(rm), session_(session)
+RippleWidget::RippleWidget(OpenRGBPluginAPIInterface* api, DeviceSession* session, QWidget* parent)
+    : QWidget(parent), api_(api), session_(session)
 {
     hook_ = new KeyboardHook();
     BuildUi();
@@ -684,13 +683,13 @@ void RippleWidget::ApplySettings(const RippleSettings& s)
 
 void RippleWidget::LoadSettings()
 {
-    if(!rm_ || !rm_->GetSettingsManager())
+    if(!api_)
     {
         return;
     }
     try
     {
-        json j = rm_->GetSettingsManager()->GetSettings("OpenRGBRipplePlugin");
+        json j = api_->GetSettings("OpenRGBRipplePlugin");
         engine_.SetSettings(SettingsFromJson(j, engine_.GetSettings()));
     }
     catch(...)
@@ -710,15 +709,15 @@ void RippleWidget::SaveSettings()
 
 void RippleWidget::FlushSettings()
 {
-    if(!rm_ || !rm_->GetSettingsManager())
+    if(!api_)
     {
         return;
     }
     try
     {
         json j = SettingsToJson(engine_.GetSettings());
-        rm_->GetSettingsManager()->SetSettings("OpenRGBRipplePlugin", j);
-        rm_->GetSettingsManager()->SaveSettings();
+        api_->SetSettings("OpenRGBRipplePlugin", j);
+        api_->SaveSettings();
     }
     catch(...)
     {
@@ -852,11 +851,11 @@ bool RippleWidget::ConsumeKeys()
                 {
                     continue;
                 }
-                if(led.led_index >= led.controller->leds.size())
+                if(led.led_index >= led.controller->GetLEDCount())
                 {
                     continue;
                 }
-                const std::string& led_name = led.controller->leds[led.led_index].name;
+                const std::string led_name = led.controller->GetLEDName(led.led_index);
                 if(KeyMap::NameMatches(led_name, names))
                 {
                     spawn_at(led.x, led.y);
@@ -913,7 +912,7 @@ void RippleWidget::Paint()
     }
     session_->WithLive([&](const auto& devices, const auto& mapped)
     {
-        std::unordered_set<RGBController*> dirty;
+        std::unordered_set<RGBControllerInterface*> dirty;
         if(s.paint_idle)
         {
             for(const auto& d : devices)
@@ -922,11 +921,7 @@ void RippleWidget::Paint()
                 {
                     continue;
                 }
-                const unsigned int idle = ToRgb(s.idle);
-                for(RGBColor& c : d.controller->colors)
-                {
-                    c = idle;
-                }
+                d.controller->SetAllColors(ToRgb(s.idle));
                 dirty.insert(d.controller);
             }
         }
@@ -937,23 +932,22 @@ void RippleWidget::Paint()
             {
                 continue;
             }
-            if(led.led_index >= led.controller->colors.size())
+            if(led.led_index >= led.controller->GetLEDCount())
             {
                 continue;
             }
             const RippleRGB base = s.paint_idle
                 ? s.idle
-                : FromRgb(led.controller->colors[led.led_index]);
+                : FromRgb(led.controller->GetColor(led.led_index));
             const RippleRGB c = engine_.SampleOver(led.x, led.y, now, base);
-            led.controller->colors[led.led_index] = ToRgb(c);
+            led.controller->SetColor(led.led_index, ToRgb(c));
             dirty.insert(led.controller);
         }
-        /* DeviceUpdateLEDs writes HID on this thread. UpdateLEDs() only
-           sets a flag for DeviceCallThread; Cleanup() destroys the
-           derived controller (closes HID) before that worker is joined. */
-        for(RGBController* controller : dirty)
+        /* API 5 hides DeviceUpdateLEDs(). UpdateLEDs() flags the
+           controller's DeviceCallThread to write the frame. */
+        for(RGBControllerInterface* controller : dirty)
         {
-            controller->DeviceUpdateLEDs();
+            controller->UpdateLEDs();
         }
     });
 }
@@ -1013,11 +1007,8 @@ void RippleWidget::PaintLightsOff()
             {
                 continue;
             }
-            for(RGBColor& c : d.controller->colors)
-            {
-                c = ToRGBColor(0, 0, 0);
-            }
-            d.controller->DeviceUpdateLEDs();
+            d.controller->SetAllColors(ToRGBColor(0, 0, 0));
+            d.controller->UpdateLEDs();
         }
     });
 }

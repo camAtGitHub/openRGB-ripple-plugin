@@ -1,6 +1,6 @@
 /*---------------------------------------------------------*\
 | DeviceSession.h                                           |
-|   Cached RGBController* + generation. No Qt widgets.      |
+|   Cached controller ptrs + generation. No Qt widgets.     |
 |   SPDX-License-Identifier: GPL-2.0-or-later               |
 \*---------------------------------------------------------*/
 
@@ -12,14 +12,14 @@
 #include <string>
 #include <vector>
 
-class RGBController;
+class RGBControllerInterface;
 
 class DeviceSession
 {
 public:
     struct MappedLed
     {
-        RGBController* controller = nullptr;
+        RGBControllerInterface* controller = nullptr;
         unsigned int   led_index  = 0;
         float          x          = 0;
         float          y          = 0;
@@ -27,7 +27,7 @@ public:
 
     struct DeviceOpt
     {
-        RGBController* controller = nullptr;
+        RGBControllerInterface* controller = nullptr;
         std::string    name;
         bool           selected   = true;
     };
@@ -40,12 +40,12 @@ public:
 
     /* Walk a snapshot copied by the caller on the RM callback thread
        while GetRGBControllers() is stable. Does not call UpdateMode. */
-    void Rebuild(const std::vector<RGBController*>& snapshot);
+    void Rebuild(const std::vector<RGBControllerInterface*>& snapshot);
 
     void SetCustomModes();
     void PushDirectMode();
 
-    bool DeviceSelected(RGBController* controller) const;
+    bool DeviceSelected(RGBControllerInterface* controller) const;
     void SetSelectedByName(const std::string& name, bool on);
 
     std::vector<DeviceOpt> Devices() const;
@@ -64,7 +64,7 @@ public:
     }
 
 private:
-    void RebuildUnlocked(const std::vector<RGBController*>& snapshot);
+    void RebuildUnlocked(const std::vector<RGBControllerInterface*>& snapshot);
 
     mutable std::mutex     mutex_;
     std::atomic<uint64_t>  generation_{0};

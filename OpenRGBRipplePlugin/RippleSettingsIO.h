@@ -1,9 +1,11 @@
 #pragma once
 
 #include "RippleEngine.h"
-#include "SettingsManager.h"
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
+
+using json = nlohmann::json;
 
 /* Idle 0-60 min, lights off 0-120 min (0 = off). With enforce_order, lights
    off must fire after idle; skip it when Effects is missing, since the

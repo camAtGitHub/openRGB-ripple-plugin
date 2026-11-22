@@ -1,3 +1,9 @@
 {
-    "IID": "com.OpenRGBPluginInterface"
+    "Id" : "com.github.camatgithub.openrgbrippleplugin",
+    "Name" : "OpenRGB Ripple Plugin",
+    "VersionStr" : "1.1.0",
+    "Url" : "https://github.com/camAtGitHub/openRGB-ripple-plugin",
+    "Commit" : "release",
+    "Description" : "Artemis-style key-press ripple for RGB keyboards",
+    "OpenRGBPluginAPIVersion" : 5
 }

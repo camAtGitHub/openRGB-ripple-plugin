@@ -1,14 +1,14 @@
 # OpenRGB Ripple Plugin
 
-Windows plugin for [OpenRGB](https://openrgb.org) **1.0rc3**
-(Plugin API **4**, SDK **5**, Qt **5.15**).
+Windows plugin for [OpenRGB](https://openrgb.org) **1.1**
+(Plugin API **5**, Qt **6.8**).
 
 The **Ripple** tab inside OpenRGB holds the config panel.
 
 ## Build the DLL (one script)
 
 Needs Visual Studio 2022 (**Desktop development with C++**) and
-Python 3 on PATH the first time (to download Qt 5.15).
+Python 3 on PATH the first time (to download Qt 6.8.3).
 
 ```powershell
 cd OpenRGBRipplePlugin
@@ -19,8 +19,8 @@ powershell -ExecutionPolicy Bypass -File .\build-plugin.ps1 -NoInstall
 
 The script:
 
-1. Clones OpenRGB `release_candidate_1.0rc2` (headers only)
-2. Installs Qt 5.15.2 msvc2019_64 into `.qt\` if you do not already have it
+1. Clones OpenRGB `release_1.1` (headers only)
+2. Installs Qt 6.8.3 msvc2022_64 into `.qt\` if you do not already have it
 3. Builds `OpenRGBRipplePlugin.dll`
 4. Copies it to `%APPDATA%\OpenRGB\plugins` unless you pass `-NoInstall`
 

@@ -5,8 +5,8 @@
 #include "OpenRGBRipplePlugin.h"
 #include "DetectionLifecycle.h"
 #include "RippleWidget.h"
-#include "ResourceManagerInterface.h"
-#include "RGBController.h"
+#include "ResourceManagerCallback.h"
+#include "RGBControllerInterface.h"
 
 #include <QAction>
 #include <QCoreApplication>
@@ -31,68 +31,88 @@ OpenRGBPluginInfo OpenRGBRipplePlugin::GetPluginInfo()
 
 unsigned int OpenRGBRipplePlugin::GetPluginAPIVersion()
 {
-    return 4; /* OpenRGB 1.0rc2 / 1.0rc3 */
+    return OPENRGB_PLUGIN_API_VERSION; /* 5: OpenRGB 1.1 */
 }
 
-void OpenRGBRipplePlugin::Load(ResourceManagerInterface* resource_manager_ptr)
+void OpenRGBRipplePlugin::Load(OpenRGBPluginAPIInterface* plugin_api_ptr)
 {
-    rm_ = resource_manager_ptr;
+    api_ = plugin_api_ptr;
     alive_ = false;
     paused_ = false;
     printf("[OpenRGBRipplePlugin] Loaded (Plugin API %u)\n", OPENRGB_PLUGIN_API_VERSION);
 }
 
-void OpenRGBRipplePlugin::DetectionStartCallback(void* arg)
+/* API 5 has no per-plugin RM callbacks; PluginManager forwards every
+   ResourceManager signal here, on whichever thread raised it. Same order
+   as the old callbacks: DETECTION_STARTED, then DEVICE_LIST_UPDATED
+   (list already swapped, old controllers deleted only after we return),
+   then DETECTION_COMPLETE. */
+void OpenRGBRipplePlugin::ResourceManagerUpdated(unsigned int update_reason)
 {
-    auto* self = static_cast<OpenRGBRipplePlugin*>(arg);
-    if(!self || !self->alive_.load())
+    switch(update_reason)
+    {
+        case RESOURCEMANAGER_UPDATE_REASON_DETECTION_STARTED:
+            DetectionStarted();
+            break;
+        case RESOURCEMANAGER_UPDATE_REASON_DEVICE_LIST_UPDATED:
+            DeviceListChanged();
+            break;
+        case RESOURCEMANAGER_UPDATE_REASON_DETECTION_COMPLETE:
+            DetectionEnded();
+            break;
+        default:
+            break;
+    }
+}
+
+void OpenRGBRipplePlugin::DetectionStarted()
+{
+    if(!alive_.load())
     {
         return;
     }
     /* Bump before the GUI slot so a stale queued OnDetectionEnd cannot
        Rebuild/UpdateMode after we have decided controllers are dying. */
-    self->suspend_epoch_.fetch_add(1);
-    self->paused_.store(true);
-    if(QThread::currentThread() == self->thread())
+    suspend_epoch_.fetch_add(1);
+    paused_.store(true);
+    if(QThread::currentThread() == thread())
     {
-        self->OnDetectionStart();
+        OnDetectionStart();
     }
     else
     {
-        QMetaObject::invokeMethod(self, "OnDetectionStart",
+        QMetaObject::invokeMethod(this, "OnDetectionStart",
                                   Qt::BlockingQueuedConnection);
     }
 }
 
-void OpenRGBRipplePlugin::DeviceListChangedCallback(void* arg)
+void OpenRGBRipplePlugin::DeviceListChanged()
 {
-    auto* self = static_cast<OpenRGBRipplePlugin*>(arg);
-    if(!self || !self->alive_.load())
+    if(!alive_.load())
     {
         return;
     }
-    if(QThread::currentThread() == self->thread())
+    if(QThread::currentThread() == thread())
     {
-        self->OnDeviceListChanged();
+        OnDeviceListChanged();
     }
     else
     {
         /* Inside UpdateDeviceList the controller vector is stable.
            Block until GUI drops/rebuilds pointers before we return. */
-        QMetaObject::invokeMethod(self, "OnDeviceListChanged",
+        QMetaObject::invokeMethod(this, "OnDeviceListChanged",
                                   Qt::BlockingQueuedConnection);
     }
 }
 
-void OpenRGBRipplePlugin::DetectionEndCallback(void* arg)
+void OpenRGBRipplePlugin::DetectionEnded()
 {
-    auto* self = static_cast<OpenRGBRipplePlugin*>(arg);
-    if(!self || !self->alive_.load())
+    if(!alive_.load())
     {
         return;
     }
-    self->queued_end_epoch_.store(self->suspend_epoch_.load());
-    QMetaObject::invokeMethod(self, "OnDetectionEnd", Qt::QueuedConnection);
+    queued_end_epoch_.store(suspend_epoch_.load());
+    QMetaObject::invokeMethod(this, "OnDetectionEnd", Qt::QueuedConnection);
 }
 
 void OpenRGBRipplePlugin::OnDetectionStart()
@@ -110,11 +130,11 @@ void OpenRGBRipplePlugin::OnDetectionStart()
 
 void OpenRGBRipplePlugin::OnDeviceListChanged()
 {
-    if(!alive_.load() || !rm_)
+    if(!alive_.load() || !api_)
     {
         return;
     }
-    if(paused_.load() || rm_->GetDetectionPercent() < 100)
+    if(paused_.load() || api_->GetDetectionPercent() < 100)
     {
         session_.Invalidate();
         if(RippleWidget* w = ui_.data())
@@ -143,7 +163,7 @@ void OpenRGBRipplePlugin::OnDeviceListChanged()
 
 void OpenRGBRipplePlugin::OnDetectionEnd()
 {
-    if(!alive_.load() || !rm_)
+    if(!alive_.load() || !api_)
     {
         return;
     }
@@ -172,39 +192,14 @@ void OpenRGBRipplePlugin::OnDetectionEnd()
     }
 }
 
-std::vector<RGBController*> OpenRGBRipplePlugin::CopyControllers() const
+std::vector<RGBControllerInterface*> OpenRGBRipplePlugin::CopyControllers() const
 {
-    std::vector<RGBController*>& live = rm_->GetRGBControllers();
-    return std::vector<RGBController*>(live.begin(), live.end());
-}
-
-void OpenRGBRipplePlugin::RegisterHostCallbacks()
-{
-    if(!rm_ || callbacks_registered_)
-    {
-        return;
-    }
-    rm_->RegisterDetectionStartCallback(&OpenRGBRipplePlugin::DetectionStartCallback, this);
-    rm_->RegisterDeviceListChangeCallback(&OpenRGBRipplePlugin::DeviceListChangedCallback, this);
-    rm_->RegisterDetectionEndCallback(&OpenRGBRipplePlugin::DetectionEndCallback, this);
-    callbacks_registered_ = true;
-}
-
-void OpenRGBRipplePlugin::UnregisterHostCallbacks()
-{
-    if(!rm_ || !callbacks_registered_)
-    {
-        return;
-    }
-    rm_->UnregisterDetectionStartCallback(&OpenRGBRipplePlugin::DetectionStartCallback, this);
-    rm_->UnregisterDeviceListChangeCallback(&OpenRGBRipplePlugin::DeviceListChangedCallback, this);
-    rm_->UnregisterDetectionEndCallback(&OpenRGBRipplePlugin::DetectionEndCallback, this);
-    callbacks_registered_ = false;
+    return api_->GetRGBControllers(); /* already a copy in API 5 */
 }
 
 QWidget* OpenRGBRipplePlugin::GetWidget()
 {
-    if(!rm_)
+    if(!api_)
     {
         return nullptr;
     }
@@ -212,16 +207,27 @@ QWidget* OpenRGBRipplePlugin::GetWidget()
     {
         return existing;
     }
-    rm_->WaitForDeviceDetection();
-    alive_ = true;
-    paused_ = false;
-    RegisterHostCallbacks();          /* BEFORE any RGBController* is cached */
-    auto* w = new RippleWidget(rm_, &session_);
+    /* No WaitForDetection() here: this runs on the GUI thread, and 1.1's
+       detection thread blocks on the GUI for DEVICE_LIST_UPDATED, so
+       waiting would deadlock. If detection is running, start paused and
+       let DETECTION_COMPLETE rebuild and resume. */
+    alive_ = true;                    /* BEFORE any controller ptr is cached */
+    paused_ = api_->GetDetectionPercent() < 100;
+    auto* w = new RippleWidget(api_, &session_);
     ui_ = w;
-    session_.Rebuild(CopyControllers());
-    w->BindDevicesFromSession();
-    session_.PushDirectMode();
-    w->StartRuntime();                /* hook + timer, after callbacks exist */
+    if(paused_.load())
+    {
+        session_.Invalidate();
+        w->BindDevicesFromSession();
+        w->PausePainting();
+    }
+    else
+    {
+        session_.Rebuild(CopyControllers());
+        w->BindDevicesFromSession();
+        session_.PushDirectMode();
+    }
+    w->StartRuntime();                /* hook + timer */
     return w;
 }
 
@@ -244,9 +250,8 @@ QMenu* OpenRGBRipplePlugin::GetTrayMenu()
 void OpenRGBRipplePlugin::Unload()
 {
     printf("[OpenRGBRipplePlugin] Unloading\n");
-    alive_ = false;
+    alive_ = false;                   /* ResourceManagerUpdated now no-ops */
     paused_ = true;
-    UnregisterHostCallbacks();
     QCoreApplication::removePostedEvents(this, QEvent::MetaCall);
     session_.Invalidate();
     if(RippleWidget* w = ui_.data())

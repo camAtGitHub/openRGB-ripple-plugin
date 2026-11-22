@@ -7,13 +7,14 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt5 5.15 REQUIRED COMPONENTS Core Gui Widgets)
+# Must match OpenRGB.exe's Qt: OpenRGB 1.1 ships Qt 6.
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets)
 
 set(OPENRGB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/OpenRGB")
 if(NOT EXISTS "${OPENRGB_DIR}/OpenRGBPluginInterface.h")
     message(FATAL_ERROR
-        "Clone OpenRGB 1.0rc2 into ${OPENRGB_DIR}\n"
-        "git clone --branch release_candidate_1.0rc2 --depth 1 https://gitlab.com/CalcProgrammer1/OpenRGB.git OpenRGB")
+        "Clone OpenRGB 1.1 into ${OPENRGB_DIR}\n"
+        "git clone --branch release_1.1 --depth 1 https://gitlab.com/CalcProgrammer1/OpenRGB.git OpenRGB")
 endif()
 
 add_library(OpenRGBRipplePlugin SHARED
@@ -45,10 +46,9 @@ target_include_directories(OpenRGBRipplePlugin PRIVATE
 
 target_compile_definitions(OpenRGBRipplePlugin PRIVATE
     VERSION_STRING="1.1.0"
-    OPENRGB_PLUGIN_API_VERSION=4
 )
 
-target_link_libraries(OpenRGBRipplePlugin PRIVATE Qt5::Core Qt5::Gui Qt5::Widgets)
+target_link_libraries(OpenRGBRipplePlugin PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets)
 if(WIN32)
     target_link_libraries(OpenRGBRipplePlugin PRIVATE user32)
     target_compile_definitions(OpenRGBRipplePlugin PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX WIN32_LEAN_AND_MEAN)

@@ -14,7 +14,7 @@ class QPushButton;
 class QSlider;
 class QSpinBox;
 class QTimer;
-class ResourceManagerInterface;
+class OpenRGBPluginAPIInterface;
 class DeviceSession;
 
 class RippleWidget : public QWidget
@@ -22,7 +22,7 @@ class RippleWidget : public QWidget
     Q_OBJECT
 
 public:
-    explicit RippleWidget(ResourceManagerInterface* rm, DeviceSession* session, QWidget* parent = nullptr);
+    explicit RippleWidget(OpenRGBPluginAPIInterface* api, DeviceSession* session, QWidget* parent = nullptr);
     ~RippleWidget() override;
 
     void ApplySettings(const RippleSettings& s);
@@ -61,7 +61,7 @@ private:
     void ShowShapeExtras();
     void SetColorButton(QPushButton* btn, const RippleRGB& c);
 
-    ResourceManagerInterface* rm_ = nullptr;
+    OpenRGBPluginAPIInterface* api_ = nullptr;
     DeviceSession*            session_ = nullptr;
     RippleEngine              engine_;
     class KeyboardHook*       hook_ = nullptr;

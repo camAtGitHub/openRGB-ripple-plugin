@@ -1,7 +1,7 @@
 # Ripple
 
 Artemis-style key-press ripple plugin for [OpenRGB](https://openrgb.org).  
-Compatible with Windows · OpenRGB Plugin API v4 · OpenRGB 1.0rc2 / 1.0rc3
+Compatible with Windows · OpenRGB Plugin API v5 · OpenRGB 1.1
 
 <p align="center">
   <img src="public/og.jpg" alt="Ripple expanding from a key on a backlit keyboard" width="860">
@@ -30,7 +30,7 @@ Play with the demo on the [live preview](https://camatgithub.github.io/openRGB-r
 
 ## Build the plugin
 
-Needs Visual Studio 2022 (**Desktop development with C++**) and Python 3 the first time (to fetch Qt 5.15).
+Needs Visual Studio 2022 (**Desktop development with C++**) and Python 3 the first time (to fetch Qt 6.8.3).
 
 ```powershell
 cd OpenRGBRipplePlugin

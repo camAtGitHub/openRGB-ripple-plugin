@@ -6,6 +6,7 @@ dist
 .tanstack
 *.log
 .DS_Store
+OpenRGBRipplePlugin/OpenRGB/
 
 # Local quarantine — not for GitHub
 to_delete/

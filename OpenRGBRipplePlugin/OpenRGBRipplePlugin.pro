@@ -4,9 +4,8 @@ TEMPLATE = lib
 TARGET = OpenRGBRipplePlugin
 CONFIG += plugin c++17 skip_target_version_ext
 
-VERSION = 1.1.0;
+VERSION = 1.1.0
 DEFINES += VERSION_STRING=\\\"$$VERSION\\\"
-DEFINES += OPENRGB_PLUGIN_API_VERSION=4
 
 # Headers only — never compile OpenRGB .cpp into the plugin.
 # RGBController / SettingsManager live in OpenRGB.exe.

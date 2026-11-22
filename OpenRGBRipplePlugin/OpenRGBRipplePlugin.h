@@ -2,7 +2,7 @@
 | OpenRGBRipplePlugin.h                                     |
 |                                                           |
 |   OpenRGB plugin — Artemis-style key-press ripple         |
-|   Target: Plugin API 4 (OpenRGB 1.0rc2 / 1.0rc3)          |
+|   Target: Plugin API 5 (OpenRGB 1.1)                      |
 |   SPDX-License-Identifier: GPL-2.0-or-later               |
 \*---------------------------------------------------------*/
 
@@ -18,7 +18,7 @@
 #include <vector>
 
 class RippleWidget;
-class RGBController;
+class RGBControllerInterface;
 
 class OpenRGBRipplePlugin : public QObject, public OpenRGBPluginInterface
 {
@@ -32,10 +32,19 @@ public:
     OpenRGBPluginInfo GetPluginInfo() override;
     unsigned int      GetPluginAPIVersion() override;
 
-    void     Load(ResourceManagerInterface* resource_manager_ptr) override;
+    void     Load(OpenRGBPluginAPIInterface* plugin_api_ptr) override;
     QWidget* GetWidget() override;
     QMenu*   GetTrayMenu() override;
     void     Unload() override;
+
+    void           OnProfileAboutToLoad() override {}
+    void           OnProfileLoad(nlohmann::json) override {}
+    nlohmann::json OnProfileSave() override { return nlohmann::json(); }
+    unsigned char* OnSDKCommand(unsigned int, unsigned char*, unsigned int*) override { return nullptr; }
+
+    void ProfileManagerUpdated(unsigned int) override {}
+    void ResourceManagerUpdated(unsigned int update_reason) override;
+    void SettingsManagerUpdated(unsigned int) override {}
 
 public slots:
     void OnDetectionStart();
@@ -43,20 +52,17 @@ public slots:
     void OnDetectionEnd();
 
 private:
-    static void DetectionStartCallback(void* arg);
-    static void DeviceListChangedCallback(void* arg);
-    static void DetectionEndCallback(void* arg);
+    void DetectionStarted();
+    void DeviceListChanged();
+    void DetectionEnded();
 
-    void RegisterHostCallbacks();
-    void UnregisterHostCallbacks();
-    std::vector<RGBController*> CopyControllers() const;
+    std::vector<RGBControllerInterface*> CopyControllers() const;
 
-    ResourceManagerInterface* rm_ = nullptr;
+    OpenRGBPluginAPIInterface* api_ = nullptr;
     DeviceSession             session_;
     QPointer<RippleWidget>    ui_;
     std::atomic<bool>         alive_{false};
     std::atomic<bool>         paused_{false};
     std::atomic<uint64_t>     suspend_epoch_{0};
     std::atomic<uint64_t>     queued_end_epoch_{0};
-    bool                      callbacks_registered_ = false;
 };
