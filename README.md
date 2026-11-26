@@ -1,10 +1,6 @@
 <div align="center">
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="docs/logo-light.png">
-  <img src="docs/logo-dark.png" alt="Ripple" width="420">
-</picture>
+<img src="public/og.jpg" alt="Ripple expanding from a key on a backlit keyboard" width="860">
 
 ### Artemis-style key-press ripples for [OpenRGB](https://openrgb.org)
 
@@ -18,10 +14,6 @@
 ![Qt 6](https://img.shields.io/badge/Qt-6.8-41CD52?style=flat-square&logo=qt&logoColor=white)
 ![C++](https://img.shields.io/badge/C%2B%2B-00599C?style=flat-square&logo=cplusplus&logoColor=white)
 [![Stars](https://img.shields.io/github/stars/camAtGitHub/openRGB-ripple-plugin?style=flat-square&logo=github)](https://github.com/camAtGitHub/openRGB-ripple-plugin/stargazers)
-
-<br>
-
-<img src="public/og.jpg" alt="Ripple expanding from a key on a backlit keyboard" width="860">
 
 <br>
 
@@ -88,6 +80,29 @@ Lights out after a period of inactivity.
 <img src="docs/shape-dart.gif" width="760" alt="Darts flying between consecutive keypresses, then exploding at the last key">
 
 </div>
+
+<details>
+<summary><b>Settings used for these GIFs</b></summary>
+<br>
+
+All three use brush **Ring**, colour **Solid** `#2ee6d6`, background `#680661`, blend **Over**, brightness 100%. Anything not listed is the [web preview](https://camatgithub.github.io/openRGB-ripple-plugin/) default.
+
+| Setting | Circle | Sweep | Dart |
+|---|:---:|:---:|:---:|
+| Speed | 21 u/s | 19.5 u/s | 28.5 u/s |
+| Thickness | 1.15 | 1.10 | 2.00 |
+| Lifetime | 0.75 s | 2.00 s | 0.80 s |
+| Retract | 0 s | 0 s | 0.30 s |
+| Echoes | 0 | 0 | 0 |
+| Jitter | — | 77% | — |
+| Span | — | 72% | — |
+| Trail | — | — | 11 keys |
+| Blast size | — | — | 8 keys |
+| Explosion | — | — | Circle |
+| Keys pressed | A, K, Num 4, Num 4 | A ×4, K ×4, Num 4 ×4, K ×4 | 2, Z, Num 3, Num *, 2 |
+| Press gap | 500 ms | 250 ms | 200 ms |
+
+</details>
 
 ## 📦 Installation
 
