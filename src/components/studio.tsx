@@ -11,11 +11,8 @@ export function Studio() {
       <header className="border-b border-border">
         <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-4 px-4 py-4 sm:px-6">
           <div className="min-w-0">
-            <p className="font-mono text-[0.62rem] uppercase tracking-[0.22em] text-accent">
-              OpenRGB · Plugin API 4
-            </p>
             <h1 className="font-display text-xl font-semibold tracking-tight sm:text-2xl">
-              Ripple
+              OpenRGB Plugin · Ripple
             </h1>
           </div>
           <Button asChild variant="accent" size="sm">
