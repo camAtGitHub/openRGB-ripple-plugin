@@ -79,11 +79,6 @@ Lights out after a period of inactivity.
 
 <br><br>
 
-**Row / Column**<br>
-<img src="docs/shape-rowcol.gif" width="760" alt="Light shooting along the row and column of each keypress">
-
-<br><br>
-
 **Sweep**<br>
 <img src="docs/shape-sweep.gif" width="760" alt="Sweep shape spreading from each keypress">
 
